@@ -81,6 +81,7 @@ If you are looking for something new to WARE then you have come to the right pla
     * You are somewhat familiar with Equinix Metal and have an account
 
 # Lets get started!
+![OCF High Level Diagram](https://user-images.githubusercontent.com/74058939/194336372-943914f2-b9e0-4c47-a27e-b31aa25a6e4a.png)
 ## Deployment steps
 1. Clone this project locally
 2. Modify the terraform.tfvars file to fit your needs.  
