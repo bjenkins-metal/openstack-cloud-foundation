@@ -1,0 +1,963 @@
+#!/bin/bash
+# by: Benjamin Jenkins
+#  This tool is experimental and has no warranty, support or functionality guarantee
+#  Openstack is complicated and can have issues that this tool cannot fix
+#  If in doubt, use the CLI and do not use this tool.
+
+## Variables ##
+export DIALOGRC="/home/ubuntu/openstack/mom/dialogrc"
+BUNDLE="/home/ubuntu/openstack/mom/bundle"
+MOMREG="/home/ubuntu/openstack/mom/momregistry"
+OSENV="/home/ubuntu/openstack/mom/osenv"
+MOMBOOTEXP="/home/ubuntu/openstack/mom/mombootexp"
+VAULTKEYS="/home/ubuntu/openstack/vaultkeys"
+ROOTCRT="/home/ubuntu/openstack/rootcrt.crt"
+ADMINRC="/home/ubuntu/openstack/admin.rc"
+KEYSTONEIP="https://"$(cat $OSENV | jq -r '.ips.keystone.pubip')":5000/v3"
+BACKTITLE="Metal Openstack Manager"
+BOOTSTRLOG="/home/ubuntu/openstack/mom/bootstrap.log"
+OSLOG="/home/ubuntu/openstack/mom/os.log"
+DIALOG_CANCEL=1
+DIALOG_HELP=2
+DIALOG_ESC=255
+HEIGHT=0
+WIDTH=0
+
+## Textbox Variables
+WARNING=$(cat <<EOW
+\n\Z1\Zb******************************************************************************************************
+\n*     By using this tool you aknowledge that you understand it can be dangerous and destructive!     *
+\n*          Use at your own risk.  If in doubt use the existing Openstack and JUJU CLI tools          *
+\n******************************************************************************************************\ZB\Zn
+EOW
+)
+
+MAININSTRUCTIONS=$(cat <<EOM
+\n***************************************************************************************************
+\n*                                                                                                 *
+\n*              \ZuThe Metal Openstack Manager will help you with the following tasks\ZU                 *
+\n*                                                                                                 *
+\n* 1. Bootstrap host machines for JUJU and create an Openstack model with all spaces attached      *
+\n* 2. Deploy the Openstack bundle                                                                  *
+\n* 3. Show you the status of Openstack using JUJU with the option to filter specific applications  *
+\n* 4. Initialize, Authorize, Unseal and restart your vault instances                               *
+\n* 5. Export your Vault root CRT                                                                   *
+\n*                                                                                                 *
+\n*      *************************************************************************************      *
+\n*      *              The Keys and CA are stored in '/home/ubuntu/openstack/'              *      *
+\n*      *                    \ZuThe Vault can only be initialized one time\ZU                     *      *
+\n*      *   \ZuThe initial keys will only generate one time and must be saved somewhere safe\ZU   *      *
+\n*      *************************************************************************************      *
+\n*                                                                                                 *
+\n***************************************************************************************************
+EOM
+)
+
+BOOTSTRAPINSTRUCTIONS=$(cat <<EOVB
+\n***************************************************************************************************
+\n*                                                                                                 *
+\n*              \ZuThe Metal Bootstrap Manager will help you with the following tasks\ZU                 *
+\n*                                                                                                 *
+\n* 1. Bootstrap hosts into an Opestack model and add spaces                                        *
+\n* 2. Deploy the Openstack bundle                                                                  *
+\n* 3. Show the admin password and admin.rc file                                                    *
+\n* 4. Show the GUI info for JUJU and Openstack Dashboard                                           *
+\n*                                                                                                 *
+\n*      *************************************************************************************      *
+\n*      *              The bootstrap process can only run one time per deployment           *      *
+\n*      *************************************************************************************      *
+\n*                                                                                                 *
+\n***************************************************************************************************
+EOVB
+)
+
+VAULTINSTRUCTIONS=$(cat <<EOV
+\n***************************************************************************************************
+\n*                                                                                                 *
+\n*              \ZuThe Metal Vault Manager will help you with the following tasks\ZU                    *
+\n*                                                                                                 *
+\n* 1. Initialize and Authorize the Vault, generate unseal keys and root tokens                     *
+\n* 2. Show you the status of the Vault                                                             *
+\n* 3. Unseal your vault instances                                                                  *
+\n*                                                                                                 *
+\n*      *************************************************************************************      *
+\n*      *              The Keys and CA are stored in '/home/ubuntu/openstack/'              *      *
+\n*      *                    \ZuThe Vault can only be initialized one time\ZU                     *      *
+\n*      *   \ZuThe initial keys will only generate one time and must be saved somewhere safe\ZU   *      *
+\n*      *************************************************************************************      *
+\n*                                                                                                 *
+\n***************************************************************************************************
+EOV
+)
+
+NEEDBOOTSTRAP=$(cat <<EOB
+\n         JUJU is not bootstrapped!
+\n Please bootstrap JUJU and deploy Openstack
+EOB
+)
+
+BOOTSTRAPYES=$(cat <<EOBS
+\n        JUJU is already bootstrapped!
+\n Bootstrap can only be run once per deployment
+EOBS
+)
+
+NEEDDEPLOY=$(cat <<EOD
+\n Openstack is not deployed!
+\n  Please deploy Openstack
+EOD
+)
+
+OSDEPLOYYES=$(cat <<EOD
+\n        Openstack is already deployed!
+\n           Check status with JUJU
+EOD
+)
+
+VAULTINITYES=$(cat <<EOI
+\n   The Vault has already been initialized
+\n This can only happen one time per deployment
+\n Init date: $(cat $MOMREG | jq -r '.vault."init-date"')
+EOI
+)
+
+NEEDVAULTINIT=$(cat <<EOIV
+\n       The Vault is not initialized!
+\n Please initialize the Vault before authorization
+EOIV
+)
+
+## FUNCTIONS ##
+
+function progressBar() {
+  dialog --backtitle "$BACKTITLE" --gauge "$PROGMESSAGE" 10 50 0
+}
+
+function bootstrapProgress() {
+  cat << 'EOBP' > $BOOTSTRLOG
+            *********************************************************************
+            ** Bootstrapping the hosts.  This process can take up to 5 minutes **
+            **   Do not click Exit until you see the message that it is safe   **
+            *********************************************************************
+
+EOBP
+  dialog --backtitle "$BACKTITLE" --tailbox "$BOOTSTRLOG" 30 100
+}
+
+function openstackProgress() {
+  cat << 'EOBO' > $OSLOG
+            ***********************************************************************
+            **    Launching Openstack.  JUJU is now building the environment     **
+            **           This part of the process does not take long             **
+            ** The build can take up to 30 minutes to complete in the background **
+            **    Do not click Exit until you see the message that it is safe    **
+            ***********************************************************************
+
+EOBO
+  dialog --backtitle "$BACKTITLE" --tailbox "$OSLOG" 30 100
+}
+
+function displayResult() {
+  dialog --title "$1" \
+    --backtitle "$BACKTITLE" \
+    --no-collapse \
+    --colors \
+    --msgbox "$result" $HEIGHT $WIDTH
+}
+
+function createRegistry() {
+[ ! -f $MOMREG ] && cat << 'EOR' > $MOMREG
+{
+  "vault": {
+    "initialized": "no",
+    "authorized": "no",
+    "init-date": "date",
+    "auth-date": "date"
+  },
+  "OS": {
+    "bootstrapped": "no",
+    "deployed": "no",
+    "bootstrap-date": "date",
+    "deployed-date": "date"
+  }
+}
+EOR
+}
+
+function backupRegistry() {
+  cp $MOMREG $MOMREG.bak
+}
+
+function getPassword() {
+  dialog --colors \
+  --backtitle "$BACKTITLE" \
+  --title "Enter Password" \
+  --clear \
+  --insecure \
+  --passwordbox "\n      Enter the *unencrypted* password for the ubuntu user\n   this is the password that was chosen for terraform.tfvars" 10 67 3>&1- 1>&2- 2>&3-
+}
+
+function createAdminRC() {
+  [ ! -f $ADMINRC ] && cat << EORC > $ADMINRC
+#!/usr/bin/env bash
+ADMIN_PASS=\$(juju run --unit keystone/0 leader-get admin_passwd)
+export OS_USERNAME="admin"
+export OS_PASSWORD=\$ADMIN_PASS
+export OS_PROJECT_NAME="admin"
+export OS_USER_DOMAIN_NAME="admin_domain"
+export OS_PROJECT_DOMAIN_NAME="admin_domain"
+export OS_IDENTITY_API_VERSION=3
+export OS_AUTH_URL=$KEYSTONEIP
+export CLIFF_FIT_WIDTH=1
+EORC
+}
+
+function getAdminPass() {
+  export ADMIN_PASS=$(juju run --unit keystone/0 leader-get admin_passwd)
+}
+
+function addSpaces() {
+  echo "10"
+  juju add-space --quiet admin $(cat $OSENV | jq -r '.cidrs."admin_cidr"')
+  juju add-space --quiet internal $(cat $OSENV | jq -r '.cidrs."internal_cidr"')
+  juju add-space --quiet public $(cat $OSENV | jq -r '.cidrs."public_cidr"')
+  juju add-space --quiet storage $(cat $OSENV | jq -r '.cidrs."storage_cidr"')
+  echo "50"
+  juju add-space --quiet storagerep $(cat $OSENV | jq -r '.cidrs."storagerep_cidr"')
+  juju add-space --quiet data $(cat $OSENV | jq -r '.cidrs."data_cidr"')
+  juju model-config --quiet default-space=internal
+  echo "100"
+}
+
+function createBootstrCtl() {
+  cat << BOOTSTRCN > $MOMBOOTEXP.ctl
+#!/usr/bin/expect -f
+log_user 0
+set timeout -1
+spawn juju bootstrap metal
+expect "*?assword: "
+send $::env(password)\r
+expect {
+    "*default*" {exit 0}
+    }
+BOOTSTRCN
+chmod +x $MOMBOOTEXP.ctl
+}
+
+function createBootstrHst() {
+  if [[ $(cat $OSENV | jq -r '.type.compact') == "true" ]]; then
+  # Boostrap compact stack
+  cat << BOOTSTRC > $MOMBOOTEXP.hst
+#!/usr/bin/expect -f
+#log_user 0
+log_file $BOOTSTRLOG
+set timeout -1
+spawn juju add-machine ssh:ubuntu@$::env(cont1adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
+expect "*?assword: "
+send $::env(password)\r
+expect "*created*"
+spawn juju add-machine ssh:ubuntu@$::env(cont2adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
+expect "*?assword: "
+send $::env(password)\r
+expect "*created*"
+spawn juju add-machine ssh:ubuntu@$::env(cont3adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
+expect "*?assword: "
+send $::env(password)\r
+expect "*created*"
+spawn juju add-machine ssh:ubuntu@$::env(stor1adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
+expect "*?assword: "
+send $::env(password)\r
+expect "*created*"
+spawn juju add-machine ssh:ubuntu@$::env(stor2adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
+expect "*?assword: "
+send $::env(password)\r
+expect "*created*"
+spawn juju add-machine ssh:ubuntu@$::env(stor3adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
+expect "*?assword: "
+send $::env(password)\r
+expect "*created*"
+spawn juju add-machine ssh:ubuntu@$::env(comp1adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
+expect "*?assword: "
+send $::env(password)\r
+expect "*created*"
+spawn juju add-machine ssh:ubuntu@$::env(comp2adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
+expect "*?assword: "
+send $::env(password)\r
+expect "*created*"
+spawn juju add-machine ssh:ubuntu@$::env(comp3adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
+expect "*?assword: "
+send $::env(password)\r
+expect "*created*"
+BOOTSTRC
+  else
+  # Bootstrap full stack
+  cat << BOOTSTRF > $MOMBOOTEXP.hst
+#!/usr/bin/expect -f
+#log_user 0
+log_file $BOOTSTRLOG
+set timeout -1
+spawn juju add-machine ssh:ubuntu@$::env(cont1adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
+expect "*?assword: "
+send $::env(password)\r
+expect "*created*"
+spawn juju add-machine ssh:ubuntu@$::env(cont2adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
+expect "*?assword: "
+send $::env(password)\r
+expect "*created*"
+spawn juju add-machine ssh:ubuntu@$::env(cont3adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
+expect "*?assword: "
+send $::env(password)\r
+expect "*created*"
+spawn juju add-machine ssh:ubuntu@$::env(db1adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
+expect "*?assword: "
+send $::env(password)\r
+expect "*created*"
+spawn juju add-machine ssh:ubuntu@$::env(db2adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
+expect "*?assword: "
+send $::env(password)\r
+expect "*created*"
+spawn juju add-machine ssh:ubuntu@$::env(db3adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
+expect "*?assword: "
+send $::env(password)\r
+expect "*created*"
+spawn juju add-machine ssh:ubuntu@$::env(ovnc1adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
+expect "*?assword: "
+send $::env(password)\r
+expect "*created*"
+spawn juju add-machine ssh:ubuntu@$::env(ovnc2adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
+expect "*?assword: "
+send $::env(password)\r
+expect "*created*"
+spawn juju add-machine ssh:ubuntu@$::env(ovnc3adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
+expect "*?assword: "
+send $::env(password)\r
+expect "*created*"
+spawn juju add-machine ssh:ubuntu@$::env(stor1adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
+expect "*?assword: "
+send $::env(password)\r
+expect "*created*"
+spawn juju add-machine ssh:ubuntu@$::env(stor2adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
+expect "*?assword: "
+send $::env(password)\r
+expect "*created*"
+spawn juju add-machine ssh:ubuntu@$::env(stor3adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
+expect "*?assword: "
+send $::env(password)\r
+expect "*created*"
+spawn juju add-machine ssh:ubuntu@$::env(comp1adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
+expect "*?assword: "
+send $::env(password)\r
+expect "*created*"
+spawn juju add-machine ssh:ubuntu@$::env(comp2adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
+expect "*?assword: "
+send $::env(password)\r
+expect "*created*"
+spawn juju add-machine ssh:ubuntu@$::env(comp3adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
+expect "*?assword: "
+send $::env(password)\r
+expect "*created*"
+spawn juju add-machine ssh:ubuntu@$::env(comp4adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
+expect "*?assword: "
+send $::env(password)\r
+expect "*created*"
+spawn juju add-machine ssh:ubuntu@$::env(comp5adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
+expect "*?assword: "
+send $::env(password)\r
+expect "*created*"
+BOOTSTRF
+  fi
+chmod +x $MOMBOOTEXP.hst
+}
+
+function prepJUJU() {
+  echo "10"
+  sudo apt-get update > /dev/null
+  echo "20"
+  sudo snap install juju --classic &> /dev/null
+  echo "40"
+  sudo snap install vault &> /dev/null
+  echo "60"
+  juju add-cloud --local metal -f /home/ubuntu/openstack/mom/metal.yaml &> /dev/null
+  echo "80"
+  createBootstrHst
+  createBootstrCtl
+  echo "100"
+}
+
+function buildControl() {
+  echo "10"
+  $MOMBOOTEXP.ctl
+  echo "50"
+  juju add-model openstack &> /dev/null
+  juju switch openstack &> /dev/null
+  echo "100"
+}
+
+function bootstrapJUJU() {
+  export cont1adminip=$(cat $OSENV | jq -r '.hosts.controller[0].adminip')
+  export cont2adminip=$(cat $OSENV | jq -r '.hosts.controller[1].adminip')
+  export cont3adminip=$(cat $OSENV | jq -r '.hosts.controller[2].adminip')
+  export db1adminip=$(cat $OSENV | jq -r '.hosts.db[0].adminip')
+  export db2adminip=$(cat $OSENV | jq -r '.hosts.db[1].adminip')
+  export db3adminip=$(cat $OSENV | jq -r '.hosts.db[2].adminip')
+  export ovnc1adminip=$(cat $OSENV | jq -r '.hosts.ovnc[0].adminip')
+  export ovnc2adminip=$(cat $OSENV | jq -r '.hosts.ovnc[1].adminip')
+  export ovnc3adminip=$(cat $OSENV | jq -r '.hosts.ovnc[2].adminip')
+  export stor1adminip=$(cat $OSENV | jq -r '.hosts.storage[0].adminip')
+  export stor2adminip=$(cat $OSENV | jq -r '.hosts.storage[1].adminip')
+  export stor3adminip=$(cat $OSENV | jq -r '.hosts.storage[2].adminip')
+  export comp1adminip=$(cat $OSENV | jq -r '.hosts.compute[0].adminip')
+  export comp2adminip=$(cat $OSENV | jq -r '.hosts.compute[1].adminip')
+  export comp3adminip=$(cat $OSENV | jq -r '.hosts.compute[2].adminip')
+  export comp4adminip=$(cat $OSENV | jq -r '.hosts.compute[3].adminip')
+  export comp5adminip=$(cat $OSENV | jq -r '.hosts.compute[4].adminip')
+  $MOMBOOTEXP.hst
+  echo "\n            **** All Hosts bootstrapped, you may safely click EXIT now ****" >> $BOOTSTRLOG
+}
+
+function keyscanGen() {
+  echo "10"
+  ssh-keygen -f /home/ubuntu/.ssh/id_rsa -N "" > /dev/null
+  ssh-keyscan $(cat $OSENV | jq -r '.hosts.juju[0].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
+  ssh-keyscan $(cat $OSENV | jq -r '.hosts.controller[0].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
+  ssh-keyscan $(cat $OSENV | jq -r '.hosts.controller[1].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
+  ssh-keyscan $(cat $OSENV | jq -r '.hosts.controller[2].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
+  echo "40"
+  if [[ $(cat $OSENV | jq -r '.type.compact') == "true" ]]; then
+    #build compact stack
+    ssh-keyscan $(cat $OSENV | jq -r '.hosts.storage[0].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
+    ssh-keyscan $(cat $OSENV | jq -r '.hosts.storage[1].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
+    ssh-keyscan $(cat $OSENV | jq -r '.hosts.storage[2].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
+    echo "60"
+    ssh-keyscan $(cat $OSENV | jq -r '.hosts.compute[0].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
+    ssh-keyscan $(cat $OSENV | jq -r '.hosts.compute[1].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
+    ssh-keyscan $(cat $OSENV | jq -r '.hosts.compute[2].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
+  else
+    #build full stack
+    ssh-keyscan $(cat $OSENV | jq -r '.hosts.db[0].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
+    ssh-keyscan $(cat $OSENV | jq -r '.hosts.db[1].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
+    ssh-keyscan $(cat $OSENV | jq -r '.hosts.db[2].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
+    ssh-keyscan $(cat $OSENV | jq -r '.hosts.ovnc[0].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
+    ssh-keyscan $(cat $OSENV | jq -r '.hosts.ovnc[1].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
+    ssh-keyscan $(cat $OSENV | jq -r '.hosts.ovnc[2].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
+    ssh-keyscan $(cat $OSENV | jq -r '.hosts.storage[0].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
+    ssh-keyscan $(cat $OSENV | jq -r '.hosts.storage[1].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
+    echo "60"
+    ssh-keyscan $(cat $OSENV | jq -r '.hosts.storage[2].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
+    ssh-keyscan $(cat $OSENV | jq -r '.hosts.compute[0].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
+    ssh-keyscan $(cat $OSENV | jq -r '.hosts.compute[1].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
+    ssh-keyscan $(cat $OSENV | jq -r '.hosts.compute[2].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
+    ssh-keyscan $(cat $OSENV | jq -r '.hosts.compute[3].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
+    ssh-keyscan $(cat $OSENV | jq -r '.hosts.compute[4].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
+  fi
+  echo "100"
+}
+
+function gatherVaultStatus() {
+  vstatus=$(juju status vault --format json | jq  -r '.applications.vault')
+  readarray -t vaults < <(echo "$vstatus" | jq -r '.units | keys[0], keys[1], keys[2]')
+  vault0ip=$(echo "$vstatus" | jq -r '.units."'"${vaults[0]}"'"."public-address"')
+  vault1ip=$(echo "$vstatus" | jq -r '.units."'"${vaults[1]}"'"."public-address"')
+  vault2ip=$(echo "$vstatus" | jq -r '.units."'"${vaults[2]}"'"."public-address"')
+  vault0st=$(echo "$vstatus" | jq -r '.units."'"${vaults[0]}"'"."workload-status".current')
+  vault1st=$(echo "$vstatus" | jq -r '.units."'"${vaults[1]}"'"."workload-status".current')
+  vault2st=$(echo "$vstatus" | jq -r '.units."'"${vaults[2]}"'"."workload-status".current')
+  vault0m=$(echo "$vstatus" | jq -r '.units."'"${vaults[0]}"'"."workload-status".message')
+  vault1m=$(echo "$vstatus" | jq -r '.units."'"${vaults[1]}"'"."workload-status".message')
+  vault2m=$(echo "$vstatus" | jq -r '.units."'"${vaults[2]}"'"."workload-status".message')
+  vault0=$(echo "$vstatus" | jq -r '.units | keys[0]')
+  vault1=$(echo "$vstatus" | jq -r '.units | keys[1]')
+  vault2=$(echo "$vstatus" | jq -r '.units | keys[2]')
+  if [[ $(echo "$vstatus" | jq -r '.units."'"${vaults[0]}"'".leader') == "true" ]]; then
+    leader=${vaults[0]}
+  elif [[ $(echo "$vstatus" | jq -r '.units."'"${vaults[1]}"'".leader') == "true" ]]; then
+    leader=${vaults[1]}
+  elif [[ $(echo "$vstatus" | jq -r '.units."'"${vaults[2]}"'".leader') == "true" ]]; then
+    leader=${vaults[2]}
+  else
+  dialog --colors --backtitle "$BACKTITLE" --title "\Z1\Zu*** Warning ***\Zn\ZU" --msgbox "Leader NOT Found" 5 20
+  break
+  fi
+  leaderip=$(echo "$vstatus" | jq -r '.units."'"$leader"'"."public-address"')
+}
+
+function gatherVaultKeys() {
+  key0=$(jq -r '.unseal_keys_b64[0]' $MOMREG)
+  key1=$(jq -r '.unseal_keys_b64[1]' $MOMREG)
+  key2=$(jq -r '.unseal_keys_b64[2]' $MOMREG)
+  key3=$(jq -r '.unseal_keys_b64[3]' $MOMREG)
+  key4=$(jq -r '.unseal_keys_b64[4]' $MOMREG)
+  roottoken=$(jq -r '.root_token' $MOMREG)
+}
+
+function unsealAll() {
+  echo "20"
+  export VAULT_ADDR="http://$vault0ip:8200"
+  vault operator unseal $key0
+  vault operator unseal $key1
+  vault operator unseal $key2
+  echo "40"
+  export VAULT_ADDR="http://$vault1ip:8200"
+  vault operator unseal $key0
+  vault operator unseal $key1
+  vault operator unseal $key2
+  echo "60"
+  export VAULT_ADDR="http://$vault2ip:8200"
+  vault operator unseal $key0
+  vault operator unseal $key1
+  vault operator unseal $key2
+  echo "90"
+}
+
+function initVault() {
+  echo "0"
+  gatherVaultStatus
+  echo "10"
+  export VAULT_ADDR="http://$leaderip:8200"
+  vault operator init -key-shares=5 -key-threshold=3 -format=json | tee $VAULTKEYS
+  backupRegistry
+  jq -s 'add' <(cat $MOMREG) <(cat $VAULTKEYS) > $MOMREG.tmp
+  mv $MOMREG.tmp $MOMREG
+  gatherVaultKeys
+  unsealAll
+  contents="$(jq '.vault.initialized = "yes"' $MOMREG)" && echo -E "${contents}" > $MOMREG
+  contents="$(jq '.vault."init-date" = (now|strftime("%Y-%m-%dT%H:%M:%SZ"))' $MOMREG)" && echo -E "${contents}" > $MOMREG
+  echo "100"
+}
+
+function authorizeVault() {
+  echo "0"
+  gatherVaultStatus
+  gatherVaultKeys
+  export VAULT_ADDR="http://$leaderip:8200"
+  export VAULT_TOKEN=$roottoken
+  vault token create -ttl=10m
+  echo "10"
+  juju run-action --quiet --wait vault/leader authorize-charm token=$roottoken
+  echo "30"
+  sleep 5
+  juju run-action --wait $vault0 restart
+  sleep 5
+  echo "50"
+  juju run-action --wait $vault1 restart
+  sleep 5
+  echo "70"
+  juju run-action --wait $vault2 restart
+  sleep 5
+  unsealAll
+  echo "80"
+  backupRegistry
+  contents="$(jq '.vault.authorized = "yes"' $MOMREG)" && echo -E "${contents}" > $MOMREG
+  contents="$(jq '.vault."auth-date" = (now|strftime("%Y-%m-%dT%H:%M:%SZ"))' $MOMREG)" && echo -E "${contents}" > $MOMREG
+  echo "100"
+}
+
+function exportVaultCA() {
+  echo "0"
+  juju run-action vault/leader --wait get-root-ca --format json | jq -r 'to_entries[] | select(.key|startswith("unit")).value.results.output' | sed -e "s/-----BEGIN CERTIFICATE-----/&/" -e "s/-----END CERTIFICATE-----/&/" -e "s/\S\{64\}/&/g" > $ROOTCRT
+  echo "40"
+  sudo cp $ROOTCRT /usr/local/share/ca-certificates/
+  echo "80"
+  sudo update-ca-certificates &> /dev/null
+  echo "100"
+}
+
+function pickBundle() {
+  if [[ $(cat $OSENV | jq -r '.type.compact') == "true" ]]; then
+    rm $BUNDLE.full
+    mv $BUNDLE.compact $BUNDLE
+  else
+    rm $BUNDLE.compact
+    mv $BUNDLE.full $BUNDLE
+  fi
+}
+
+function prepBundle() {
+  SCRAPE=$(cat $OSENV)
+  export DASHSEC=$(openssl rand -hex 12)
+  export SOURCE=$(echo $SCRAPE | jq -r '.source.release')
+  export KEYPUB=$(echo $SCRAPE | jq -r '.ips.keystone.pubip')
+  export KEYINT=$(echo $SCRAPE | jq -r '.ips.keystone.intip')
+  export KEYADM=$(echo $SCRAPE | jq -r '.ips.keystone.adminip')
+  export NCCPUB=$(echo $SCRAPE | jq -r '.ips.ncc.pubip')
+  export NCCINT=$(echo $SCRAPE | jq -r '.ips.ncc.intip')
+  export NCCADM=$(echo $SCRAPE | jq -r '.ips.ncc.adminip')
+  export PLAPUB=$(echo $SCRAPE | jq -r '.ips.placement.pubip')
+  export PLAINT=$(echo $SCRAPE | jq -r '.ips.placement.intip')
+  export PLAADM=$(echo $SCRAPE | jq -r '.ips.placement.adminip')
+  export GLAPUB=$(echo $SCRAPE | jq -r '.ips.glance.pubip')
+  export GLAINT=$(echo $SCRAPE | jq -r '.ips.glance.intip')
+  export GLAADM=$(echo $SCRAPE | jq -r '.ips.glance.adminip')
+  export CINPUB=$(echo $SCRAPE | jq -r '.ips.cinder.pubip')
+  export CININT=$(echo $SCRAPE | jq -r '.ips.cinder.intip')
+  export CINADM=$(echo $SCRAPE | jq -r '.ips.cinder.adminip')
+  export RADPUB=$(echo $SCRAPE | jq -r '.ips.rados.pubip')
+  export RADINT=$(echo $SCRAPE | jq -r '.ips.rados.intip')
+  export RADADM=$(echo $SCRAPE | jq -r '.ips.rados.adminip')
+  export NEUPUB=$(echo $SCRAPE | jq -r '.ips.neutron.pubip')
+  export NEUINT=$(echo $SCRAPE | jq -r '.ips.neutron.intip')
+  export NEUADM=$(echo $SCRAPE | jq -r '.ips.neutron.adminip')
+  export HEAPUB=$(echo $SCRAPE | jq -r '.ips.heat.pubip')
+  export HEAINT=$(echo $SCRAPE | jq -r '.ips.heat.intip')
+  export HEAADM=$(echo $SCRAPE | jq -r '.ips.heat.adminip')
+  export DASPUB=$(echo $SCRAPE | jq -r '.ips.dashboard.pubip')
+  export VAUADM=$(echo $SCRAPE | jq -r '.ips.vault.adminip')
+  export BARPUB=$(echo $SCRAPE | jq -r '.ips.barbican.pubip')
+  export BARINT=$(echo $SCRAPE | jq -r '.ips.barbican.intip')
+  export BARADM=$(echo $SCRAPE | jq -r '.ips.barbican.adminip')
+  export MAGPUB=$(echo $SCRAPE | jq -r '.ips.magnum.pubip')
+  export MAGINT=$(echo $SCRAPE | jq -r '.ips.magnum.intip')
+  export MAGADM=$(echo $SCRAPE | jq -r '.ips.magnum.adminip')
+  export OVERLAY=$(echo $SCRAPE | jq -r '.overlay.vlan')
+  envsubst < $BUNDLE > $BUNDLE.complete
+  mv $BUNDLE.complete $BUNDLE
+}
+
+function deployOpenstack() {
+  exec 3>&1
+  exec 1>>$OSLOG
+  exec 2>>$OSLOG
+  juju deploy $BUNDLE --map-machines=existing
+  echo "\n            **** Openstack has been deployed, you may safely click EXIT now ****" >> $OSLOG
+}
+
+function populateOS() {
+  source $ADMINRC
+  echo "10"
+  juju run-action --wait heat/0 domain-setup
+  export EXTERNALNET=$(cat $OSENV | jq -r '.externalnet.cidr')
+  echo "20"
+  ecidr=$(echo $EXTERNALNET | cut -d "/" -f2)
+  efirst3oc=$(echo $EXTERNALNET | cut -d. -f1-3)
+  elastoc=$(echo $EXTERNALNET | cut -d. -f4 | rev | cut -c 4- | rev)
+  enextip=$((elastoc+1))
+  extgateway=$efirst3oc.$enextip
+  echo "30"
+  openstack flavor create --ram 1024 --disk 0 --vcpus 1 1-by-1 &> /dev/null
+  openstack flavor create --ram 2048 --disk 0 --vcpus 1 1-by-2 &> /dev/null
+  openstack flavor create --ram 4096 --disk 0 --vcpus 2 2-by-4 &> /dev/null
+  openstack flavor create --ram 8192 --disk 0 --vcpus 4 4-by-8 &> /dev/null
+  echo "40"
+  openstack flavor create --ram 16384 --disk 0 --vcpus 8 8-by-16 &> /dev/null
+  openstack flavor create --ram 32768 --disk 0 --vcpus 8 8-by-32 &> /dev/null
+  openstack flavor create --ram 32768 --disk 0 --vcpus 16 16-by-32 &> /dev/null
+  echo "50"
+  wget -q https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img -P /home/ubuntu/images/
+  openstack image create --min-disk 10 --disk-format qcow2 --file /home/ubuntu/images/jammy-server-cloudimg-amd64.img --public Ubuntu_22.04_Jammy &> /dev/null
+  echo "60"
+  openstack network create --share --external --provider-physical-network physnet1 --provider-network-type vlan --provider-segment 2000 External &> /dev/null
+  openstack subnet create --network External --ip-version 4 --subnet-range $EXTERNALNET --gateway $extgateway --dns-nameserver 1.1.1.1 ExternalSubnet &> /dev/null
+  openstack network create Internal &> /dev/null
+  echo "70"
+  openstack subnet create --network Internal --subnet-range 10.10.1.0/24 --dns-nameserver 1.1.1.1 InternalSubnet &> /dev/null
+  openstack router create ProjectRouter &> /dev/null
+  openstack router set ProjectRouter --external-gateway External &> /dev/null
+  echo "80"
+  openstack router add subnet ProjectRouter InternalSubnet &> /dev/null
+  echo "100"
+}
+
+function fixNCC() {
+  nstatus=$(juju status nova-cloud-controller --format json | jq  -r '.applications."nova-cloud-controller"')
+  readarray -t ncc < <(echo "$nstatus" | jq -r '.units | keys[0], keys[1], keys[2]')
+  ncc0=$(echo "$nstatus" | jq -r '.units | keys[0]')
+  ncc1=$(echo "$nstatus" | jq -r '.units | keys[1]')
+  ncc2=$(echo "$nstatus" | jq -r '.units | keys[2]')
+  echo "30"
+  juju ssh $ncc0 sudo reboot &> /dev/null
+  sleep 15
+  echo "60"
+  juju ssh $ncc1 sudo reboot &> /dev/null
+  sleep 15
+  echo "90"
+  juju ssh $ncc2 sudo reboot &> /dev/null
+  echo "100"
+}
+
+# Submenu for Vault
+function vaultMenu() {
+while true; do
+  exec 3>&1
+  subselect=$(dialog \
+  --backtitle "$BACKTITLE" \
+  --title "Vault Menu" \
+  --cancel-label "Back" \
+  --help-button \
+  --help-label "Instructions" \
+  --menu "Please select:" $HEIGHT $WIDTH 3 \
+  "1" "Initialize and Authorize Vault" \
+  "2" "Check Vault status" \
+  "3" "Unseal all Vaults" \
+  2>&1 1>&3)
+  exit_status=$?
+  exec 3>&-
+  case $exit_status in
+    $DIALOG_CANCEL)
+      break
+      ;;
+    $DIALOG_ESC)
+      break
+      ;;
+    $DIALOG_HELP)
+      clear
+      HEIGHT=23
+      WIDTH=103
+      result=$(echo "$VAULTINSTRUCTIONS")
+      displayResult "Instructions and Info"
+      HEIGHT=0
+      WIDTH=0
+      ;;
+  esac
+  case $subselect in
+    1 )
+      PROGMESSAGE="Initializing Vault"
+      HEIGHT=12
+      WIDTH=85
+      if [[ $(cat $MOMREG | jq -r '.OS.bootstrapped') != "yes" ]]; then
+        dialog --colors --backtitle "$BACKTITLE" --title "\Z1\Zu*** NOTICE ***\Zn\ZU" --msgbox "$NEEDBOOTSTRAP" 8 50
+        HEIGHT=0
+        WIDTH=0
+        break
+      elif [[ $(cat $MOMREG | jq -r '.OS.deployed') != "yes" ]]; then
+        dialog --colors --backtitle "$BACKTITLE" --title "\Z1\Zu*** NOTICE ***\Zn\ZU" --msgbox "$NEEDDEPLOY" 8 50
+        HEIGHT=0
+        WIDTH=0
+        break
+      elif [[ $(cat "$MOMREG" | jq -r '.vault.initialized') == "yes" ]]; then
+        dialog --colors --backtitle "$BACKTITLE" --title "\Z1\Zu*** NOTICE ***\Zn\ZU" --msgbox "$VAULTINITYES" 9 50
+        HEIGHT=0
+        WIDTH=0
+        break
+      else
+        initVault | progressBar
+        PROGMESSAGE="Authorizing Vault"
+        authorizeVault | progressBar
+        PROGMESSAGE="Exporting root certificate"
+        exportVaultCA | progressBar
+        result="                             **Vault Initialized**\n                     The keys and root token are located in\n                        $VAULTKEYS\n                Make sure to back up the keys somewhere safe\n        It can take a few minutes for the Vault status to show active\n  The Vault root certificate has been exported and added to the system CA store\n                          The certificate is stored in\n                      $ROOTCRT"
+        displayResult "Initialize Vault"
+      fi
+      HEIGHT=0
+      WIDTH=0
+      ;;
+    2 )
+      HEIGHT=30
+      WIDTH=60
+      gatherVaultStatus
+      result=$(echo "\n\ZuVault 0 info:\ZU\nname   : ${vaults[0]}\nIP     : $vault0ip\nStatus : $vault0st\nMessage: $vault0m\n\n\ZuVault 1 info:\ZU\nname   : ${vaults[1]}\nIP     : $vault1ip\nStatus : $vault1st\nMessage: $vault1m\n\n\ZuVault 2 info:\ZU\nname   : ${vaults[2]}\nIP     : $vault2ip\nStatus : $vault2st\nMessage: $vault2m\n\n\ZuLeader info:\ZU\nLeader : $leader\nIP     : $leaderip" | sed 's/-/ -/')
+      displayResult "Vault Status"
+      HEIGHT=0
+      WIDTH=0
+      ;;
+    3 )
+      PROGMESSAGE="Unsealing all Vaults"
+      HEIGHT=6
+      WIDTH=37
+      gatherVaultStatus
+      gatherVaultKeys
+      unsealAll | progressBar
+      result=" All Vaults have been unsealed\nCheck the Vault status to verify"
+      displayResult "Unseal all Vaults"
+      HEIGHT=0
+      WIDTH=0
+      ;;
+  esac
+done
+}
+
+# Submenu for bootstrap
+function bootstrapMenu() {
+while true; do
+  exec 3>&1
+  subselect=$(dialog \
+  --backtitle "$BACKTITLE" \
+  --title "Bootstrap & Deploy Menu" \
+  --cancel-label "Back" \
+  --help-button \
+  --help-label "Instructions" \
+  --menu "Please select:" $HEIGHT $WIDTH 4 \
+  "1" "Bootstrap JUJU" \
+  "2" "Deploy Openstack" \
+  "3" "Show admin info" \
+  "4" "Populate Openstack" \
+  2>&1 1>&3)
+  exit_status=$?
+  exec 3>&-
+  case $exit_status in
+    $DIALOG_CANCEL)
+      break
+      ;;
+    $DIALOG_ESC)
+      break
+      ;;
+    $DIALOG_HELP)
+      clear
+      HEIGHT=23
+      WIDTH=103
+      result=$(echo "$BOOTSTRAPINSTRUCTIONS")
+      displayResult "Instructions and Info"
+      HEIGHT=0
+      WIDTH=0
+      ;;
+  esac
+  case $subselect in
+    1 )
+      if [[ $(cat $MOMREG | jq -r '.OS.bootstrapped') == "yes" ]]; then
+        HEIGHT=6
+        WIDTH=60
+        dialog --colors --backtitle "$BACKTITLE" --title "\Z1\Zu*** NOTICE ***\Zn\ZU" --msgbox "$BOOTSTRAPYES" 8 50
+        HEIGHT=0
+        WIDTH=0
+        break
+      else
+        HEIGHT=6
+        WIDTH=33
+        PROGMESSAGE="Bootstrapping JUJU, please be patient (prep)"
+        export password=$(getPassword)
+        prepJUJU | progressBar
+        PROGMESSAGE="Bootstrapping JUJU, please be patient (keys)"
+        keyscanGen | progressBar
+        PROGMESSAGE="Bootstrapping JUJU, please be patient (ctrl)"
+        buildControl | progressBar
+        PROGMESSAGE="Bootstrapping JUJU, please be patient (hosts)"
+        bootstrapJUJU | bootstrapProgress
+        PROGMESSAGE="Bootstrapping JUJU, please be patient (spaces)"
+        addSpaces | progressBar
+        backupRegistry
+        contents="$(jq '.OS.bootstrapped = "yes"' $MOMREG)" && echo -E "${contents}" > $MOMREG
+        contents="$(jq '.OS."bootstrap-date" = (now|strftime("%Y-%m-%dT%H:%M:%SZ"))' $MOMREG)" && echo -E "${contents}" > $MOMREG
+        rm $MOMBOOTEXP.hst
+        rm $MOMBOOTEXP.ctl
+        result="JUJU has been bootstrapped\nYou may now deploy Openstack"
+        displayResult "Bootstrap Status"
+        HEIGHT=0
+        WIDTH=0
+      fi
+      ;;
+    2 )
+      HEIGHT=27
+      WIDTH=60
+      if [[ $(cat $MOMREG | jq -r '.OS.bootstrapped') != "yes" ]]; then
+        dialog --colors --backtitle "$BACKTITLE" --title "\Z1\Zu*** NOTICE ***\Zn\ZU" --msgbox "$NEEDBOOTSTRAP" 8 50
+        HEIGHT=0
+        WIDTH=0
+        break
+      elif [[ $(cat $MOMREG | jq -r '.OS.deployed') == "yes" ]]; then
+        dialog --colors --backtitle "$BACKTITLE" --title "\Z1\Zu*** NOTICE ***\Zn\ZU" --msgbox "$OSDEPLOYYES" 8 50
+        HEIGHT=0
+        WIDTH=0
+        break
+      else
+        PROGMESSAGE="Deploying Openstack"
+        HEIGHT=6
+        WIDTH=80
+        pickBundle
+        prepBundle
+        deployOpenstack | openstackProgress
+        contents="$(jq '.OS.deployed = "yes"' $MOMREG)" && echo -E "${contents}" > $MOMREG
+        contents="$(jq '.OS."deployed-date" = (now|strftime("%Y-%m-%dT%H:%M:%SZ"))' $MOMREG)" && echo -E "${contents}" > $MOMREG
+        result=" Openstack has been deployed, check JUJU status to see the progress\n           Install can take up to 30 minutes to complete"
+        displayResult "Deployment Status"
+        HEIGHT=0
+        WIDTH=0
+      fi
+      ;;
+    3 )
+      HEIGHT=9
+      WIDTH=45
+      DASHGUI=$(cat $OSENV | jq -r '.ips.dashboard.pubip')
+      createAdminRC
+      getAdminPass
+      result="admin.rc  : /home/ubuntu/openstack\nDASHBOARD : https://$DASHGUI\nUSER      : admin\nDOMAIN    : admin_domain\nPASS      : "$ADMIN_PASS
+      displayResult "admin.rc located in /home/ubuntu/openstack"
+      HEIGHT=0
+      WIDTH=0
+      ;;
+    4 )
+      HEIGHT=6
+      WIDTH=65
+      DASHGUI=$(cat $OSENV | jq -r '.ips.dashboard.pubip')
+      createAdminRC
+      getAdminPass
+      PROGMESSAGE="Populating Openstack"
+      populateOS | progressBar
+      result="  Openstack is now populated with a reference layout\n        The Dashboard is at https://$DASHGUI"
+      displayResult "Openstack Deployed"
+      HEIGHT=0
+      WIDTH=0
+      ;;
+  esac
+done
+}
+
+### Startup process and Warning Popup ###
+dialog --colors --backtitle "$BACKTITLE" --title "\Z1\Zu*** Warning ***\Zn\ZU" --msgbox "$WARNING" 10 106
+sudo chown ubuntu:ubuntu /home/ubuntu/openstack -R &> /dev/null
+createRegistry &> /dev/null
+
+## Main Menu
+while true; do
+  exec 3>&1
+  selection=$(dialog \
+    --backtitle "$BACKTITLE" \
+    --title "Main Menu" \
+    --clear \
+    --cancel-label "Exit" \
+    --help-button \
+    --help-label "Instructions" \
+    --menu "" 0 0 4 \
+    "1" "Check JUJU status" \
+    "2" "Bootstrap menu" \
+    "3" "Vault menu" \
+    "4" "Reset Nova Cloud Controller" \
+    2>&1 1>&3)
+  exit_status=$?
+  exec 3>&-
+  case $exit_status in
+    $DIALOG_CANCEL)
+      clear
+      exit
+      ;;
+    $DIALOG_ESC)
+      clear
+      echo "Program aborted." >&2
+      exit 1
+      ;;
+    $DIALOG_HELP)
+      clear
+      HEIGHT=23
+      WIDTH=103
+      result=$(echo "$MAININSTRUCTIONS")
+      displayResult "Instructions and Info"
+      HEIGHT=0
+      WIDTH=0
+      ;;
+  esac
+  case $selection in
+    1 )
+      HEIGHT=100
+      WIDTH=185
+      monapp=$(dialog --no-collapse --clear --no-cancel --title "JUJU Status" --backtitle "$BACKTITLE" --inputbox "           Leave blank for all applications\n    You can enter a full or partial application name\n           i.e nova-compute or no*" 10 60 3>&1 1>&2 2>&3 3>&-)
+      result=$(juju status $monapp)
+      displayResult "JUJU Status"
+      HEIGHT=0
+      WIDTH=0
+      ;;
+    2 )
+      bootstrapMenu
+      ;;
+    3 )
+      vaultMenu
+      ;;
+    4 )
+      HEIGHT=6
+      WIDTH=55
+      PROGMESSAGE="Restarting all NCC units"
+      fixNCC | progressBar
+      result="    Nova Cloud Controllers have all been reset\n  check juju status to make sure all are active"
+      displayResult "NCC Reset"
+      HEIGHT=0
+      WIDTH=0
+      ;;
+  esac
+done
