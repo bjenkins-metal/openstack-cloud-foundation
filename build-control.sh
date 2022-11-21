@@ -168,6 +168,7 @@ echo 'ubuntu ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
 
 # Enable SSH password login
 sed -re 's/^(PasswordAuthentication)([[:space:]]+)no/\1\2yes/' -i.`date -I` /etc/ssh/sshd_config
+rm -f /etc/ssh/sshd_config.d/50-cloud-init.conf
 
 # build one time startup service to create ZFS mirror pool on NVMe for LXD
 cat > /etc/systemd/system/zfs-build.service << 'EOFB'
