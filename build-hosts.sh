@@ -126,6 +126,7 @@ echo 'ubuntu ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
 
 # Enable SSH password login
 sed -re 's/^(PasswordAuthentication)([[:space:]]+)no/\1\2yes/' -i.`date -I` /etc/ssh/sshd_config
+rm -f /etc/ssh/sshd_config.d/50-cloud-init.conf
 
 # clean up and reboot to apply everything
 touch /etc/cloud/cloud-init.disabled
