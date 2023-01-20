@@ -2,6 +2,7 @@
 
 # Update and install packages
 apt-mark hold cloud-init
+apt-mark hold grub*
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get -y upgrade
 apt-get -y install bridge-utils zfsutils-linux
