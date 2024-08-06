@@ -7,8 +7,30 @@ apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get -y upgrade
 apt-get -y install bridge-utils zfsutils-linux
 
+#disable ipv6 for now
+sysctl -w net.ipv6.conf.all.disable_ipv6=1
+sysctl -w net.ipv6.conf.default.disable_ipv6=1
+sysctl -w net.ipv6.conf.lo.disable_ipv6=1
+
 # Find interface names
-read -r name if1 if2 < <(grep bond-slaves /etc/network/interfaces)
+ncount=$(lshw -class network | grep -A 1 "bus info" | grep name | sed 's/.*:\s*//' | wc -l)
+if [[ "$ncount" -ge "4" ]] && [[ $(lshw -class network | grep -A 1 "bus info" | grep name | sed 's/.*:\s*//' | sed -n 1p) == "eno1" ]]; then
+nic1=$(lshw -class network | grep -A 1 "bus info" | grep name | sed 's/.*:\s*//' | sed -n 3p)
+nic2=$(lshw -class network | grep -A 1 "bus info" | grep name | sed 's/.*:\s*//' | sed -n 4p)
+nic3=$(lshw -class network | grep -A 1 "bus info" | grep name | sed 's/.*:\s*//' | sed -n 5p)
+nic4=$(lshw -class network | grep -A 1 "bus info" | grep name | sed 's/.*:\s*//' | sed -n 6p)
+elif [[ "$ncount" -eq "4" ]] && [[ $(lshw -class network | grep -A 1 "bus info" | grep name | sed 's/.*:\s*//' | sed -n 1p) != "eno1" ]]; then
+nic1=$(lshw -class network | grep -A 1 "bus info" | grep name | sed 's/.*:\s*//' | sed -n 1p)
+nic2=$(lshw -class network | grep -A 1 "bus info" | grep name | sed 's/.*:\s*//' | sed -n 2p)
+nic3=$(lshw -class network | grep -A 1 "bus info" | grep name | sed 's/.*:\s*//' | sed -n 3p)
+nic4=$(lshw -class network | grep -A 1 "bus info" | grep name | sed 's/.*:\s*//' | sed -n 4p)
+elif [[ "$ncount" -eq "4" ]] && [[ $(lshw -class network | grep -A 1 "bus info" | grep name | sed 's/.*:\s*//' | sed -n 1p) == "eno1" ]]; then
+nic1=$(lshw -class network | grep -A 1 "bus info" | grep name | sed 's/.*:\s*//' | sed -n 3p)
+nic2=$(lshw -class network | grep -A 1 "bus info" | grep name | sed 's/.*:\s*//' | sed -n 4p)
+else
+nic1=$(lshw -class network | grep -A 1 "bus info" | grep name | sed 's/.*:\s*//' | sed -n 1p)
+nic2=$(lshw -class network | grep -A 1 "bus info" | grep name | sed 's/.*:\s*//' | sed -n 2p)
+fi
 
 # Disable netfilter on bridges
 echo net.bridge.bridge-nf-call-ip6tables=0 >> /etc/sysctl.d/bridge.conf
@@ -34,18 +56,112 @@ datasn=$(echo ${data_cidr} | cut -d "/" -f2)
 
 # Build new interfaces file
 mv /etc/network/interfaces /etc/network/interfaces."$(date +"%m-%d-%y-%H-%M")"
+if [[ "$ncount" -eq "6" ]]; then
+cat > /etc/network/interfaces << EOFNET0
+auto lo
+iface lo inet loopback
+
+auto $nic1
+iface $nic1 inet manual
+    bond-master bond0
+    mtu 9000
+
+auto $nic2
+iface $nic2 inet manual
+    bond-master bond1
+    mtu 9000
+
+auto $nic3
+iface $nic3 inet manual
+    bond-master bond0
+    mtu 9000
+
+auto $nic4
+iface $nic4 inet manual
+    bond-master bond1
+    mtu 9000
+
+auto bond0
+iface bond0 inet manual
+    bond-downdelay 200
+    bond-miimon 100
+    bond-mode 4
+    bond-updelay 200
+    bond-xmit_hash_policy layer3+4
+    bond-lacp-rate 1
+    bond-slaves $nic1 $nic3
+    mtu 9000
+
+auto bond1
+iface bond1 inet manual
+    bond-downdelay 200
+    bond-miimon 100
+    bond-mode 4
+    bond-updelay 200
+    bond-xmit_hash_policy layer3+4
+    bond-lacp-rate 1
+    bond-slaves $nic2 $nic4
+    mtu 9000
+EOFNET0
+elif [[ "$ncount" -eq "4" ]] && [[ $(lshw -class network | grep -A 1 "bus info" | grep name | sed 's/.*:\s*//' | sed -n 1p) != "eno1" ]]; then
+cat > /etc/network/interfaces << EOFNET0.1
+auto lo
+iface lo inet loopback
+
+auto $nic1
+iface $nic1 inet manual
+    bond-master bond0
+    mtu 9000
+
+auto $nic2
+iface $nic2 inet manual
+    bond-master bond1
+    mtu 9000
+
+auto $nic3
+iface $nic3 inet manual
+    bond-master bond0
+    mtu 9000
+
+auto $nic4
+iface $nic4 inet manual
+    bond-master bond1
+    mtu 9000
+
+auto bond0
+iface bond0 inet manual
+    bond-downdelay 200
+    bond-miimon 100
+    bond-mode 4
+    bond-updelay 200
+    bond-xmit_hash_policy layer3+4
+    bond-lacp-rate 1
+    bond-slaves $nic1 $nic3
+    mtu 9000
+
+auto bond1
+iface bond1 inet manual
+    bond-downdelay 200
+    bond-miimon 100
+    bond-mode 4
+    bond-updelay 200
+    bond-xmit_hash_policy layer3+4
+    bond-lacp-rate 1
+    bond-slaves $nic2 $nic4
+    mtu 9000
+EOFNET0.1
+else
 cat > /etc/network/interfaces << EOFNET1
 auto lo
 iface lo inet loopback
 
-auto $if1
-iface $if1 inet manual
+auto $nic1
+iface $nic1 inet manual
     bond-master bond0
     mtu 9000
 
-auto $if2
-iface $if2 inet manual
-    pre-up sleep 4
+auto $nic2
+iface $nic2 inet manual
     bond-master bond0
     mtu 9000
 
@@ -57,25 +173,29 @@ iface bond0 inet manual
     bond-updelay 200
     bond-xmit_hash_policy layer3+4
     bond-lacp-rate 1
-    bond-slaves $if1 $if2
+    bond-slaves $nic1 $nic2
     mtu 9000
+EOFNET1
+fi
+
+cat >> /etc/network/interfaces << EOFNETAD
 
 auto bond0.${admin_vlan}
 iface bond0.${admin_vlan} inet manual
 
-auto br1000
-iface br1000 inet static
+auto br${admin_vlan}
+iface br${admin_vlan} inet static
     address ${adminip}/$adminsn
     gateway $admingw
     dns-nameservers ${admin_dns}
-    bridge_ports bond0.1000
+    bridge_ports bond0.${admin_vlan}
     bridge_stp off
     bridge_fd 9
     bridge_hello 2
     bridge_maxage 12
-EOFNET1
-if [ "$inspace_internal" = "true" ]
-then
+EOFNETAD
+
+if [ "$inspace_internal" = "true" ]; then
 cat >> /etc/network/interfaces << EOFNET2
 
 auto bond0.${internal_vlan}
@@ -91,8 +211,7 @@ iface br${internal_vlan} inet static
     bridge_maxage 12
 EOFNET2
 fi
-if [ "$inspace_public" = "true" ]
-then
+if [ "$inspace_public" = "true" ]; then
 cat >> /etc/network/interfaces << EOFNET3
 
 auto bond0.${public_vlan}
@@ -108,8 +227,7 @@ iface br${public_vlan} inet static
     bridge_maxage 12
 EOFNET3
 fi
-if [ "$inspace_storage" = "true" ]
-then
+if [ "$inspace_storage" = "true" ]; then
 cat >> /etc/network/interfaces << EOFNET4
 
 auto bond0.${storage_vlan}
@@ -125,8 +243,7 @@ iface br${storage_vlan} inet static
     bridge_maxage 12
 EOFNET4
 fi
-if [ "$inspace_storagerep" = "true" ]
-then
+if [ "$inspace_storagerep" = "true" ]; then
 cat >> /etc/network/interfaces << EOFNET5
 
 auto bond0.${storagerep_vlan}
@@ -142,8 +259,7 @@ iface br${storagerep_vlan} inet static
     bridge_maxage 12
 EOFNET5
 fi
-if [ "$inspace_data" = "true" ]
-then
+if [ "$inspace_data" = "true" ]; then
 cat >> /etc/network/interfaces << EOFNET6
 
 auto bond0.${data_vlan}
@@ -168,7 +284,10 @@ useradd -m -p ${ubuntu_user_pw} -s /usr/bin/bash ubuntu
 echo 'ubuntu ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
 
 # Enable SSH password login
+#20.04
 sed -re 's/^(PasswordAuthentication)([[:space:]]+)no/\1\2yes/' -i.`date -I` /etc/ssh/sshd_config
+#22.04
+sed -re 's/^(KbdInteractiveAuthentication)([[:space:]]+)no/\1\2yes/' -i.`date -I` /etc/ssh/sshd_config
 rm -f /etc/ssh/sshd_config.d/50-cloud-init.conf
 
 # build one time startup service to create ZFS mirror pool on NVMe for LXD

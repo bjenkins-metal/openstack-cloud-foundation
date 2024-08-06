@@ -17,6 +17,7 @@ KEYSTONEIP="https://"$(cat $OSENV | jq -r '.ips.keystone.pubip')":5000/v3"
 BACKTITLE="Metal Openstack Manager"
 BOOTSTRLOG="/home/ubuntu/openstack/mom/bootstrap.log"
 OSLOG="/home/ubuntu/openstack/mom/os.log"
+JUJUCTLR=$(cat $OSENV | jq -r '.hosts.juju[0].adminip')
 DIALOG_CANCEL=1
 DIALOG_HELP=2
 DIALOG_ESC=255
@@ -24,13 +25,6 @@ HEIGHT=0
 WIDTH=0
 
 ## Textbox Variables
-WARNING=$(cat <<EOW
-\n\Z1\Zb******************************************************************************************************
-\n*     By using this tool you aknowledge that you understand it can be dangerous and destructive!     *
-\n*          Use at your own risk.  If in doubt use the existing Openstack and JUJU CLI tools          *
-\n******************************************************************************************************\ZB\Zn
-EOW
-)
 
 MAININSTRUCTIONS=$(cat <<EOM
 \n***************************************************************************************************
@@ -88,6 +82,39 @@ VAULTINSTRUCTIONS=$(cat <<EOV
 \n*                                                                                                 *
 \n***************************************************************************************************
 EOV
+)
+
+ELOGO=$(cat <<OELOGO
+\n
+\n\Z1\Zb                               ░▒▓▓▓▓▒░
+\n                            ▓▓▓▓▓▓▓▓▓▓▓▓▓▓
+\n                    ░▒▓░    ▓▓▓▓▓▓▓▓▓▓▓▓▓▓    ░▓▒░
+\n               ░▓▓▓▓▓▓▓░    ▓▓▓▓▓    ▓▓▓▓▓    ░▓▓▓▓▓▓▓░
+\n         ░▒▓▓▓▓▓▓▓▓▓▓▓▓░    ▓▓▓▓▓    ▓▓▓▓▓    ░▓▓▓▓▓▓▓▓▓▓▓▓▒░
+\n  ░▒▒    ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░    ▓▓▓▓▓    ▓▓▓▓▓    ░▓▓▓▓▓▓▓▓▓▓▓▓▓▓    ▒▒░
+\n▒▓▓▓▓    ▓▓▓▓▓░   ░▓▓▓▓░    ▓▓▓▓▓    ▓▓▓▓▓    ░▓▓▓▓░   ░▓▓▓▓▓    ▓▓▓▓▒
+\n▓▓▓▓▓    ▓▓▓▓▓    ░▓▓▓▓░    ▓▓▓▓▓    ▓▓▓▓▓    ░▓▓▓▓░    ▓▓▓▓▓    ▓▓▓▓▓
+\n▓▓▓▓▓    ▓▓▓▓▓    ░▓▓▓▓░    ▓▓▓▓▓    ▓▓▓▓▓    ░▓▓▓▓░    ▓▓▓▓▓    ▓▓▓▓▓
+\n▓▓▓▓▓    ▓▓▓▓▓    ░▓▓▓▓░    ▓▓▓▓▓    ▓▓▓▓▓    ░▓▓▓▓░    ▓▓▓▓▓    ▓▓▓▓▓
+\n▓▓▓▓▓    ▓▓▓▓▓    ░▓▓▓▓░    ▓▓▓▓▓    ▓▓▓▓▓    ░▓▓▓▓░    ▓▓▓▓▓    ▓▓▓▓▓
+\n▓▓▓▓▓    ▓▓▓▓▓    ░▓▓▓▓░    ▓▓▓▓▓    ▓▓▓▓▓    ░▓▓▓▓░    ▓▓▓▓▓    ▓▓▓▓▓
+\n▓▓▓▓▓    ▓▓▓▓▓    ░▓▓▓▓░    ▓▓▓▓▓    ▓▓▓▓▓    ░▓▓▓▓░    ▓▓▓▓▓    ▓▓▓▓▓
+\n▓▓▓▓▓    ▓▓▓▓▓    ░▓▓▓▓░    ▓▓▓▓▓    ▓▓▓▓▓    ░▓▓▓▓░    ▓▓▓▓▓    ▓▓▓▓▓
+\n▓▓▓▓▓    ▓▓▓▓▓    ░▓▓▓▓░    ▓▓▓▓▓    ▓▓▓▓▓    ░▓▓▓▓░    ▓▓▓▓▓    ▓▓▓▓▓
+\n▓▓▓▓▓    ▓▓▓▓▓    ░▓▓▓▓░    ▓▓▓▓▓    ▓▓▓▓▓    ░▓▓▓▓░    ▓▓▓▓▓    ▓▓▓▓▓
+\n▓▓▓▓▓▓░  ▓▓▓▓▓    ░▓▓▓▓░    ▓▓▓▓▓    ▓▓▓▓▓    ░▓▓▓▓░    ▓▓▓▓▓  ░▓▓▓▓▓▓
+\n▓▓▓▓▓▓▓▓▓▓▓▓▓▓    ░▓▓▓▓░    ▓▓▓▓▓    ▓▓▓▓▓    ░▓▓▓▓░    ▓▓▓▓▓▓▓▓▓▓▓▓▓▓
+\n  ░▓▓▓▓▓▓▓▓▓▓▓    ░▓▓▓▓░    ▓▓▓▓▓    ▓▓▓▓▓    ░▓▓▓▓░    ▓▓▓▓▓▓▓▓▓▓▓░
+\n       ░▓▓▓▓▓▓    ░▓▓▓▓░    ▓▓▓▓▓    ▓▓▓▓▓    ░▓▓▓▓░    ▓▓▓▓▓▓░
+\n            ░▒    ░▓▓▓▓▓▓▓▓▒▓▓▓▓▓    ▓▓▓▓▓▒▓▓▓▓▓▓▓▓░    ▒░
+\n                  ░▓▓▓▓▓▓▓▓▓▓▓▓▓▓    ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░
+\n                        ▒▓▓▓▓▓▓▓▓    ▓▓▓▓▓▓▓▓▒
+\n                             ░▓▓▓    ▓▓▓░                             \ZB\Zn
+\n
+\n\Z4  The Metal Openstack Manager can be destructive to your environment
+\n            Use caution while navigating and using this tool\Zn
+\n
+OELOGO
 )
 
 NEEDBOOTSTRAP=$(cat <<EOB
@@ -200,7 +227,7 @@ function getPassword() {
 function createAdminRC() {
   [ ! -f $ADMINRC ] && cat << EORC > $ADMINRC
 #!/usr/bin/env bash
-ADMIN_PASS=\$(juju run --unit keystone/0 leader-get admin_passwd)
+ADMIN_PASS=\$(juju run --quiet keystone/leader get-admin-password --format=json | jq -r '.[]."results"."admin-password"')
 export OS_USERNAME="admin"
 export OS_PASSWORD=\$ADMIN_PASS
 export OS_PROJECT_NAME="admin"
@@ -213,7 +240,7 @@ EORC
 }
 
 function getAdminPass() {
-  export ADMIN_PASS=$(juju run --unit keystone/0 leader-get admin_passwd)
+  export ADMIN_PASS=$(juju run --quiet keystone/0 get-admin-password --format=json | jq -r '.[]."results"."admin-password"')
 }
 
 function addSpaces() {
@@ -235,11 +262,16 @@ function createBootstrCtl() {
 log_user 0
 set timeout -1
 spawn juju bootstrap metal
-expect "*?assword: "
-send $::env(password)\r
 expect {
-    "*default*" {exit 0}
-    }
+  "*?assword: " {
+    send $::env(password)\r
+    exp_continue
+  }
+  "*workloads.*" {
+    exit 0
+  }
+  
+}
 BOOTSTRCN
 chmod +x $MOMBOOTEXP.ctl
 }
@@ -253,41 +285,59 @@ function createBootstrHst() {
 log_file $BOOTSTRLOG
 set timeout -1
 spawn juju add-machine ssh:ubuntu@$::env(cont1adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
-expect "*?assword: "
-send $::env(password)\r
-expect "*created*"
+expect {
+  "*?assword: " {
+    send $::env(password)\r
+    exp_continue
+  }
+  "*created*" {
+  }
+}
 spawn juju add-machine ssh:ubuntu@$::env(cont2adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
-expect "*?assword: "
-send $::env(password)\r
-expect "*created*"
+expect {
+  "*?assword: " {
+    send $::env(password)\r
+    exp_continue
+  }
+  "*created*" {
+  }
+}
 spawn juju add-machine ssh:ubuntu@$::env(cont3adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
-expect "*?assword: "
-send $::env(password)\r
-expect "*created*"
-spawn juju add-machine ssh:ubuntu@$::env(stor1adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
-expect "*?assword: "
-send $::env(password)\r
-expect "*created*"
-spawn juju add-machine ssh:ubuntu@$::env(stor2adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
-expect "*?assword: "
-send $::env(password)\r
-expect "*created*"
-spawn juju add-machine ssh:ubuntu@$::env(stor3adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
-expect "*?assword: "
-send $::env(password)\r
-expect "*created*"
+expect {
+  "*?assword: " {
+    send $::env(password)\r
+    exp_continue
+  }
+  "*created*" {
+  }
+}
 spawn juju add-machine ssh:ubuntu@$::env(comp1adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
-expect "*?assword: "
-send $::env(password)\r
-expect "*created*"
+expect {
+  "*?assword: " {
+    send $::env(password)\r
+    exp_continue
+  }
+  "*created*" {
+  }
+}
 spawn juju add-machine ssh:ubuntu@$::env(comp2adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
-expect "*?assword: "
-send $::env(password)\r
-expect "*created*"
+expect {
+  "*?assword: " {
+    send $::env(password)\r
+    exp_continue
+  }
+  "*created*" {
+  }
+}
 spawn juju add-machine ssh:ubuntu@$::env(comp3adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
-expect "*?assword: "
-send $::env(password)\r
-expect "*created*"
+expect {
+  "*?assword: " {
+    send $::env(password)\r
+    exp_continue
+  }
+  "*created*" {
+  }
+}
 BOOTSTRC
   else
   # Bootstrap full stack
@@ -297,76 +347,171 @@ BOOTSTRC
 log_file $BOOTSTRLOG
 set timeout -1
 spawn juju add-machine ssh:ubuntu@$::env(cont1adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
-expect "*?assword: "
-send $::env(password)\r
-expect "*created*"
+expect {
+  "*?assword: " {
+    send $::env(password)\r
+    exp_continue
+  }
+  "*created*" {
+  }
+}
 spawn juju add-machine ssh:ubuntu@$::env(cont2adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
-expect "*?assword: "
-send $::env(password)\r
-expect "*created*"
+expect {
+  "*?assword: " {
+    send $::env(password)\r
+    exp_continue
+  }
+  "*created*" {
+  }
+}
 spawn juju add-machine ssh:ubuntu@$::env(cont3adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
-expect "*?assword: "
-send $::env(password)\r
-expect "*created*"
+expect {
+  "*?assword: " {
+    send $::env(password)\r
+    exp_continue
+  }
+  "*created*" {
+  }
+}
 spawn juju add-machine ssh:ubuntu@$::env(db1adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
-expect "*?assword: "
-send $::env(password)\r
-expect "*created*"
+expect {
+  "*?assword: " {
+    send $::env(password)\r
+    exp_continue
+  }
+  "*created*" {
+  }
+}
 spawn juju add-machine ssh:ubuntu@$::env(db2adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
-expect "*?assword: "
-send $::env(password)\r
-expect "*created*"
+expect {
+  "*?assword: " {
+    send $::env(password)\r
+    exp_continue
+  }
+  "*created*" {
+  }
+}
 spawn juju add-machine ssh:ubuntu@$::env(db3adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
-expect "*?assword: "
-send $::env(password)\r
-expect "*created*"
+expect {
+  "*?assword: " {
+    send $::env(password)\r
+    exp_continue
+  }
+  "*created*" {
+  }
+}
 spawn juju add-machine ssh:ubuntu@$::env(ovnc1adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
-expect "*?assword: "
-send $::env(password)\r
-expect "*created*"
+expect {
+  "*?assword: " {
+    send $::env(password)\r
+    exp_continue
+  }
+  "*created*" {
+  }
+}
 spawn juju add-machine ssh:ubuntu@$::env(ovnc2adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
-expect "*?assword: "
-send $::env(password)\r
-expect "*created*"
+expect {
+  "*?assword: " {
+    send $::env(password)\r
+    exp_continue
+  }
+  "*created*" {
+  }
+}
 spawn juju add-machine ssh:ubuntu@$::env(ovnc3adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
-expect "*?assword: "
-send $::env(password)\r
-expect "*created*"
+expect {
+  "*?assword: " {
+    send $::env(password)\r
+    exp_continue
+  }
+  "*created*" {
+  }
+}
 spawn juju add-machine ssh:ubuntu@$::env(stor1adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
-expect "*?assword: "
-send $::env(password)\r
-expect "*created*"
+expect {
+  "*?assword: " {
+    send $::env(password)\r
+    exp_continue
+  }
+  "*created*" {
+  }
+}
 spawn juju add-machine ssh:ubuntu@$::env(stor2adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
-expect "*?assword: "
-send $::env(password)\r
-expect "*created*"
+expect {
+  "*?assword: " {
+    send $::env(password)\r
+    exp_continue
+  }
+  "*created*" {
+  }
+}
 spawn juju add-machine ssh:ubuntu@$::env(stor3adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
-expect "*?assword: "
-send $::env(password)\r
-expect "*created*"
+expect {
+  "*?assword: " {
+    send $::env(password)\r
+    exp_continue
+  }
+  "*created*" {
+  }
+}
 spawn juju add-machine ssh:ubuntu@$::env(comp1adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
-expect "*?assword: "
-send $::env(password)\r
-expect "*created*"
+expect {
+  "*?assword: " {
+    send $::env(password)\r
+    exp_continue
+  }
+  "*created*" {
+  }
+}
 spawn juju add-machine ssh:ubuntu@$::env(comp2adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
-expect "*?assword: "
-send $::env(password)\r
-expect "*created*"
+expect {
+  "*?assword: " {
+    send $::env(password)\r
+    exp_continue
+  }
+  "*created*" {
+  }
+}
 spawn juju add-machine ssh:ubuntu@$::env(comp3adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
-expect "*?assword: "
-send $::env(password)\r
-expect "*created*"
+expect {
+  "*?assword: " {
+    send $::env(password)\r
+    exp_continue
+  }
+  "*created*" {
+  }
+}
 spawn juju add-machine ssh:ubuntu@$::env(comp4adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
-expect "*?assword: "
-send $::env(password)\r
-expect "*created*"
+expect {
+  "*?assword: " {
+    send $::env(password)\r
+    exp_continue
+  }
+  "*created*" {
+  }
+}
 spawn juju add-machine ssh:ubuntu@$::env(comp5adminip) --public-key /home/ubuntu/.ssh/id_rsa.pub --private-key /home/ubuntu/.ssh/id_rsa
-expect "*?assword: "
-send $::env(password)\r
-expect "*created*"
+expect {
+  "*?assword: " {
+    send $::env(password)\r
+    exp_continue
+  }
+  "*created*" {
+  }
+}
 BOOTSTRF
   fi
 chmod +x $MOMBOOTEXP.hst
+}
+
+function evalhostup() {
+  alivetest=($(cat $OSENV | jq -r '.hosts[][].adminip | @sh'))
+  alivelen=${#alivetest[@]}
+  echo "Hosts detected:" $alivelen
+  for (( i=0; i<${alivelen}; i++ ));
+  do
+  echo ${alivetest[i]} $(eval ping -c 1 ${alivetest[i]} &> /dev/null && echo success || echo fail)
+  done
 }
 
 function prepJUJU() {
@@ -377,7 +522,7 @@ function prepJUJU() {
   echo "40"
   sudo snap install vault &> /dev/null
   echo "60"
-  juju add-cloud --local metal -f /home/ubuntu/openstack/mom/metal.yaml &> /dev/null
+  juju add-cloud metal -f /home/ubuntu/openstack/mom/metal.yaml &> /dev/null
   echo "80"
   createBootstrHst
   createBootstrCtl
@@ -418,6 +563,11 @@ function bootstrapJUJU() {
 function keyscanGen() {
   echo "10"
   ssh-keygen -f /home/ubuntu/.ssh/id_rsa -N "" > /dev/null
+  cat << SSHWO > /home/ubuntu/.ssh/config
+Host $JUJUCTLR
+    IdentityFile /home/ubuntu/.ssh/id_rsa
+    ControlMaster no
+SSHWO
   ssh-keyscan $(cat $OSENV | jq -r '.hosts.juju[0].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
   ssh-keyscan $(cat $OSENV | jq -r '.hosts.controller[0].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
   ssh-keyscan $(cat $OSENV | jq -r '.hosts.controller[1].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
@@ -425,12 +575,9 @@ function keyscanGen() {
   echo "40"
   if [[ $(cat $OSENV | jq -r '.type.compact') == "true" ]]; then
     #build compact stack
-    ssh-keyscan $(cat $OSENV | jq -r '.hosts.storage[0].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
-    ssh-keyscan $(cat $OSENV | jq -r '.hosts.storage[1].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
-    ssh-keyscan $(cat $OSENV | jq -r '.hosts.storage[2].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
-    echo "60"
     ssh-keyscan $(cat $OSENV | jq -r '.hosts.compute[0].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
     ssh-keyscan $(cat $OSENV | jq -r '.hosts.compute[1].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
+    echo "60"
     ssh-keyscan $(cat $OSENV | jq -r '.hosts.compute[2].adminip') >> /home/ubuntu/.ssh/known_hosts 2> /dev/null
   else
     #build full stack
@@ -533,16 +680,16 @@ function authorizeVault() {
   export VAULT_TOKEN=$roottoken
   vault token create -ttl=10m
   echo "10"
-  juju run-action --quiet --wait vault/leader authorize-charm token=$roottoken
+  juju run --quiet vault/leader authorize-charm token=$roottoken
   echo "30"
   sleep 5
-  juju run-action --wait $vault0 restart
+  juju run --quiet $vault0 restart
   sleep 5
   echo "50"
-  juju run-action --wait $vault1 restart
+  juju run --quiet $vault1 restart
   sleep 5
   echo "70"
-  juju run-action --wait $vault2 restart
+  juju run --quiet $vault2 restart
   sleep 5
   unsealAll
   echo "80"
@@ -554,7 +701,7 @@ function authorizeVault() {
 
 function exportVaultCA() {
   echo "0"
-  juju run-action vault/leader --wait get-root-ca --format json | jq -r 'to_entries[] | select(.key|startswith("unit")).value.results.output' | sed -e "s/-----BEGIN CERTIFICATE-----/&/" -e "s/-----END CERTIFICATE-----/&/" -e "s/\S\{64\}/&/g" > $ROOTCRT
+  juju run --quiet vault/leader get-root-ca --format json | jq -r 'to_entries[] | select(.key|startswith("vault")).value.results.output' | sed -e "s/-----BEGIN CERTIFICATE-----/&/" -e "s/-----END CERTIFICATE-----/&/" -e "s/\S\{64\}/&/g" > $ROOTCRT
   echo "40"
   sudo cp $ROOTCRT /usr/local/share/ca-certificates/
   echo "80"
@@ -618,13 +765,13 @@ function deployOpenstack() {
   exec 1>>$OSLOG
   exec 2>>$OSLOG
   juju deploy $BUNDLE --map-machines=existing
-  echo "\n            **** Openstack has been deployed, you may safely click EXIT now ****" >> $OSLOG
+  echo "              **** Openstack has been deployed, you may safely click EXIT now ****" >> $OSLOG
 }
 
 function populateOS() {
   source $ADMINRC
   echo "10"
-  juju run-action --wait heat/0 domain-setup
+  juju run --quiet heat/0 domain-setup
   export EXTERNALNET=$(cat $OSENV | jq -r '.externalnet.cidr')
   echo "20"
   ecidr=$(echo $EXTERNALNET | cut -d "/" -f2)
@@ -658,19 +805,12 @@ function populateOS() {
 }
 
 function fixNCC() {
-  nstatus=$(juju status nova-cloud-controller --format json | jq  -r '.applications."nova-cloud-controller"')
-  readarray -t ncc < <(echo "$nstatus" | jq -r '.units | keys[0], keys[1], keys[2]')
-  ncc0=$(echo "$nstatus" | jq -r '.units | keys[0]')
-  ncc1=$(echo "$nstatus" | jq -r '.units | keys[1]')
-  ncc2=$(echo "$nstatus" | jq -r '.units | keys[2]')
   echo "30"
-  juju ssh $ncc0 sudo reboot &> /dev/null
-  sleep 15
+  juju exec --application ovn-chassis "sudo systemctl restart neutron-ovn-metadata-agent" 
   echo "60"
-  juju ssh $ncc1 sudo reboot &> /dev/null
-  sleep 15
+  juju exec --application ovn-dedicated-chassis "sudo systemctl restart ovn*"
   echo "90"
-  juju ssh $ncc2 sudo reboot &> /dev/null
+  juju exec --application ovn-chassis "sudo systemctl restart ovn*"
   echo "100"
 }
 
@@ -776,10 +916,11 @@ while true; do
   --help-button \
   --help-label "Instructions" \
   --menu "Please select:" $HEIGHT $WIDTH 4 \
-  "1" "Bootstrap JUJU" \
-  "2" "Deploy Openstack" \
-  "3" "Show admin info" \
-  "4" "Populate Openstack" \
+  "1" "Verify Host Connectivity" \
+  "2" "Bootstrap JUJU" \
+  "3" "Deploy Openstack" \
+  "4" "Show admin info" \
+  "5" "Populate Openstack" \
   2>&1 1>&3)
   exit_status=$?
   exec 3>&-
@@ -801,7 +942,15 @@ while true; do
       ;;
   esac
   case $subselect in
-    1 )
+      1 )
+        HEIGHT=25
+        WIDTH=25
+        result=$(evalhostup)
+        displayResult "Host Status"
+        HEIGHT=0
+        WIDTH=0
+      ;;
+    2 )
       if [[ $(cat $MOMREG | jq -r '.OS.bootstrapped') == "yes" ]]; then
         HEIGHT=6
         WIDTH=60
@@ -834,7 +983,7 @@ while true; do
         WIDTH=0
       fi
       ;;
-    2 )
+    3 )
       HEIGHT=27
       WIDTH=60
       if [[ $(cat $MOMREG | jq -r '.OS.bootstrapped') != "yes" ]]; then
@@ -862,7 +1011,7 @@ while true; do
         WIDTH=0
       fi
       ;;
-    3 )
+    4 )
       HEIGHT=9
       WIDTH=45
       DASHGUI=$(cat $OSENV | jq -r '.ips.dashboard.pubip')
@@ -873,7 +1022,7 @@ while true; do
       HEIGHT=0
       WIDTH=0
       ;;
-    4 )
+    5 )
       HEIGHT=6
       WIDTH=65
       DASHGUI=$(cat $OSENV | jq -r '.ips.dashboard.pubip')
@@ -891,7 +1040,7 @@ done
 }
 
 ### Startup process and Warning Popup ###
-dialog --colors --backtitle "$BACKTITLE" --title "\Z1\Zu*** Warning ***\Zn\ZU" --msgbox "$WARNING" 10 106
+dialog --colors --backtitle "$BACKTITLE" --msgbox "$ELOGO" 35 74
 sudo chown ubuntu:ubuntu /home/ubuntu/openstack -R &> /dev/null
 createRegistry &> /dev/null
 

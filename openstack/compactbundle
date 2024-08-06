@@ -1,106 +1,8 @@
-series: focal
+series: jammy
 applications:
-  ceph-osd-spin:
-    charm: ceph-osd
-    channel: stable
-    revision: 513
-    num_units: 3
-    to:
-    - "3"
-    - "4"
-    - "5"
-    options:
-      bluestore: true
-      customize-failure-domain: false
-      osd-devices: /dev/sdb /dev/sdc /dev/sdd /dev/sde /dev/sdf /dev/sdg /dev/sdh
-        /dev/sdi /dev/sdj /dev/sdk /dev/sdl /dev/sdm /dev/sdn
-      osd-journal-size: 4096
-      source: $SOURCE
-      use-direct-io: true
-    bindings:
-      "": internal
-      cluster: storagerep
-      mon: internal
-      nrpe-external-master: internal
-      public: storage
-      secrets-storage: internal
-  ceph-radosgw-spin:
-    charm: ceph-radosgw
-    channel: stable
-    revision: 499
-    num_units: 3
-    to:
-    - lxd:0
-    - lxd:1
-    - lxd:2
-    options:
-      ceph-osd-replication-count: 3
-      rgw-lightweight-pool-pg-num: -1
-      source: $SOURCE
-      vip: $RADADM $RADINT $RADPUB
-    bindings:
-      "": internal
-      admin: admin
-      certificates: admin
-      cluster: internal
-      gateway: internal
-      ha: internal
-      identity-service: internal
-      internal: internal
-      master: internal
-      mon: internal
-      nrpe-external-master: internal
-      object-store: internal
-      public: public
-      radosgw-user: internal
-      slave: internal
-  cephmon-spin:
-    charm: ceph-mon
-    channel: stable
-    revision: 73
-    num_units: 3
-    to:
-    - lxd:0
-    - lxd:1
-    - lxd:2
-    options:
-      auth-supported: cephx
-      customize-failure-domain: false
-      expected-osd-count: 0
-      monitor-count: 3
-      source: $SOURCE
-    bindings:
-      "": internal
-      admin: admin
-      bootstrap-source: internal
-      client: internal
-      cluster: storagerep
-      dashboard: internal
-      mds: internal
-      mon: internal
-      nrpe-external-master: internal
-      osd: internal
-      prometheus: internal
-      public: storage
-      radosgw: internal
-      rbd-mirror: internal
-  cinder-ceph-spin:
-    charm: cinder-ceph
-    channel: stable
-    revision: 483
-    options:
-      ceph-osd-replication-count: 3
-    bindings:
-      "": internal
-      ceph: internal
-      ceph-access: internal
-      ceph-replication-device: internal
-      juju-info: internal
-      storage-backend: internal
-  cinder-spin:
+  cinder:
     charm: cinder
-    channel: stable
-    revision: 530
+    channel: 2023.1/stable
     num_units: 3
     to:
     - lxd:0
@@ -108,18 +10,15 @@ applications:
     - lxd:2
     options:
       block-device: None
-      ceph-osd-replication-count: 3
-      glance-api-version: 2
-      openstack-origin: $SOURCE
       use-internal-endpoints: true
       vip: $CINADM $CININT $CINPUB
       vip_cidr: 24
+      enabled-services: api,scheduler
     bindings:
       "": internal
       admin: admin
       amqp: internal
       backup-backend: internal
-      ceph: storage
       certificates: admin
       cinder-volume-service: internal
       cluster: internal
@@ -131,10 +30,49 @@ applications:
       public: public
       shared-db: internal
       storage-backend: storage
-  cinder-spin-hacluster:
+  cinder-volume:
+    charm: cinder
+    channel: 2023.1/stable
+    num_units: 3
+    to:
+    - "3"
+    - "4"
+    - "5"
+    options:
+      block-device: None
+      use-internal-endpoints: true
+      enabled-services: volume
+    bindings:
+      "": internal
+      admin: admin
+      amqp: internal
+      backup-backend: internal
+      certificates: admin
+      cinder-volume-service: internal
+      cluster: internal
+      ha: internal
+      identity-service: internal
+      image-service: internal
+      internal: internal
+      nrpe-external-master: internal
+      public: public
+      shared-db: internal
+      storage-backend: storage
+  cinder-lvm:
+    charm: cinder-lvm
+    channel: 2023.1/stable
+    options:
+      block-device: /dev/nvme2n1 /dev/nvme3n1
+      overwrite: true
+      config-flags: target_protocol=iscsi,target_helper=lioadm
+    bindings:
+      "": internal
+      certificates: admin
+      juju-info: internal
+      storage-backend: storage
+  cinder-hacluster:
     charm: hacluster
     channel: stable
-    revision: 83
     bindings:
       "": internal
       ha: internal
@@ -146,7 +84,6 @@ applications:
   dashboard-hacluster:
     charm: hacluster
     channel: stable
-    revision: 83
     bindings:
       "": internal
       ha: internal
@@ -158,7 +95,6 @@ applications:
   etcd:
     charm: etcd
     channel: stable
-    revision: 711
     num_units: 3
     to:
     - lxd:0
@@ -175,16 +111,13 @@ applications:
       proxy: internal
   glance:
     charm: glance
-    channel: stable
-    revision: 516
+    channel: 2023.1/stable
     num_units: 3
     to:
-    - lxd:0
-    - lxd:1
-    - lxd:2
+    - "0"
+    - "1"
+    - "2"
     options:
-      ceph-osd-replication-count: 3
-      openstack-origin: $SOURCE
       use-internal-endpoints: true
       vip: $GLAADM $GLAINT $GLAPUB
       vip_cidr: 24
@@ -192,7 +125,6 @@ applications:
       "": internal
       admin: admin
       amqp: internal
-      ceph: storage
       certificates: admin
       cinder-volume-service: internal
       cluster: internal
@@ -208,7 +140,6 @@ applications:
   glance-hacluster:
     charm: hacluster
     channel: stable
-    revision: 83
     bindings:
       "": internal
       ha: internal
@@ -219,15 +150,13 @@ applications:
       peer-availability: internal
   heat:
     charm: heat
-    channel: stable
-    revision: 485
+    channel: 2023.1/stable
     num_units: 3
     to:
     - lxd:0
     - lxd:1
     - lxd:2
     options:
-      openstack-origin: $SOURCE
       vip: $HEAADM $HEAINT $HEAPUB
       vip_cidr: 24
     bindings:
@@ -246,7 +175,6 @@ applications:
   heat-hacluster:
     charm: hacluster
     channel: stable
-    revision: 83
     bindings:
       "": internal
       ha: internal
@@ -257,15 +185,13 @@ applications:
       peer-availability: internal
   keystone:
     charm: keystone
-    channel: stable
-    revision: 539
+    channel: 2023.1/stable
     num_units: 3
     to:
     - lxd:0
     - lxd:1
     - lxd:2
     options:
-      openstack-origin: $SOURCE
       preferred-api-version: 3
       vip: $KEYADM $KEYINT $KEYPUB
       vip_cidr: 24
@@ -290,7 +216,6 @@ applications:
   keystone-hacluster:
     charm: hacluster
     channel: stable
-    revision: 83
     bindings:
       "": internal
       ha: internal
@@ -302,7 +227,6 @@ applications:
   memcached:
     charm: memcached
     channel: stable
-    revision: 38
     num_units: 3
     to:
     - lxd:0
@@ -321,7 +245,6 @@ applications:
   mysql-innodb-cluster:
     charm: mysql-innodb-cluster
     channel: 8.0/stable
-    revision: 30
     resources:
       mysql-shell: -1
     num_units: 3
@@ -332,7 +255,6 @@ applications:
     options:
       cluster-name: mysql
       max-connections: 2000
-      source: $SOURCE
     bindings:
       "": internal
       certificates: admin
@@ -344,10 +266,19 @@ applications:
   mysql-router-cinder:
     charm: mysql-router
     channel: 8.0/stable
-    revision: 35
     options:
       max_connections: 2000
-      source: $SOURCE
+    bindings:
+      "": internal
+      certificates: admin
+      db-router: internal
+      juju-info: internal
+      shared-db: internal
+  mysql-router-cinder-volume:
+    charm: mysql-router
+    channel: 8.0/stable
+    options:
+      max_connections: 2000
     bindings:
       "": internal
       certificates: admin
@@ -357,10 +288,8 @@ applications:
   mysql-router-dashboard:
     charm: mysql-router
     channel: 8.0/stable
-    revision: 35
     options:
       max_connections: 2000
-      source: $SOURCE
     bindings:
       "": internal
       certificates: admin
@@ -370,10 +299,8 @@ applications:
   mysql-router-glance:
     charm: mysql-router
     channel: 8.0/stable
-    revision: 35
     options:
       max_connections: 2000
-      source: $SOURCE
     bindings:
       "": internal
       certificates: admin
@@ -383,10 +310,8 @@ applications:
   mysql-router-heat:
     charm: mysql-router
     channel: 8.0/stable
-    revision: 35
     options:
       max_connections: 2000
-      source: $SOURCE
     bindings:
       "": internal
       certificates: admin
@@ -396,10 +321,8 @@ applications:
   mysql-router-keystone:
     charm: mysql-router
     channel: 8.0/stable
-    revision: 35
     options:
       max_connections: 2000
-      source: $SOURCE
     bindings:
       "": internal
       certificates: admin
@@ -409,10 +332,8 @@ applications:
   mysql-router-ncc:
     charm: mysql-router
     channel: 8.0/stable
-    revision: 35
     options:
       max_connections: 2000
-      source: $SOURCE
     bindings:
       "": internal
       certificates: admin
@@ -422,10 +343,8 @@ applications:
   mysql-router-neutronapi:
     charm: mysql-router
     channel: 8.0/stable
-    revision: 35
     options:
       max_connections: 2000
-      source: $SOURCE
     bindings:
       "": internal
       certificates: admin
@@ -435,10 +354,8 @@ applications:
   mysql-router-placement:
     charm: mysql-router
     channel: 8.0/stable
-    revision: 35
     options:
       max_connections: 2000
-      source: $SOURCE
     bindings:
       "": internal
       certificates: admin
@@ -448,10 +365,8 @@ applications:
   mysql-router-vault:
     charm: mysql-router
     channel: 8.0/stable
-    revision: 35
     options:
       max_connections: 200
-      source: $SOURCE
     bindings:
       "": internal
       certificates: admin
@@ -461,7 +376,6 @@ applications:
   ncc-hacluster:
     charm: hacluster
     channel: stable
-    revision: 83
     bindings:
       "": internal
       ha: internal
@@ -472,8 +386,7 @@ applications:
       peer-availability: internal
   neutron-api:
     charm: neutron-api
-    channel: stable
-    revision: 501
+    channel: 2023.1/stable
     num_units: 3
     to:
     - lxd:0
@@ -481,7 +394,7 @@ applications:
     - lxd:2
     options:
       allow-automatic-l3agent-failover: true
-      enable-dvr: true
+      enable-dvr: false
       enable-fwaas: false
       enable-l3ha: true
       enable-ml2-port-security: true
@@ -494,7 +407,6 @@ applications:
       neutron-external-network: physnet1
       neutron-plugin: ovs
       neutron-security-groups: true
-      openstack-origin: $SOURCE
       use-internal-endpoints: true
       vip: $NEUADM $NEUINT $NEUPUB
       vip_cidr: 24
@@ -523,7 +435,6 @@ applications:
   neutron-api-hacluster:
     charm: hacluster
     channel: stable
-    revision: 83
     bindings:
       "": internal
       ha: internal
@@ -534,8 +445,7 @@ applications:
       peer-availability: internal
   neutron-api-plugin-ovn:
     charm: neutron-api-plugin-ovn
-    channel: stable
-    revision: 10
+    channel: 2023.1/stable
     options:
       dns-servers: 1.1.1.1
     bindings:
@@ -546,8 +456,7 @@ applications:
       ovsdb-cms: internal
   nova-cloud-controller:
     charm: nova-cloud-controller
-    channel: stable
-    revision: 566
+    channel: 2023.1/stable
     num_units: 3
     to:
     - lxd:0
@@ -561,7 +470,6 @@ applications:
       cpu-allocation-ratio: 4
       network-manager: Neutron
       neutron-external-network: physnet1
-      openstack-origin: $SOURCE
       quota-count-usage-from-placement: true
       use-internal-endpoints: true
       vip: $NCCADM $NCCINT $NCCPUB
@@ -592,33 +500,26 @@ applications:
       shared-db-cell: internal
   nova-compute:
     charm: nova-compute
-    channel: stable
-    revision: 550
+    channel: 2023.1/stable
     num_units: 3
     to:
-    - "6"
-    - "7"
-    - "8"
+    - "3"
+    - "4"
+    - "5"
     options:
-      ceph-osd-replication-count: 3
-      config-flags: block_device_allocate_retries=300,block_device_allocate_retries_interval=10
       enable-live-migration: true
       enable-resize: true
       inject-password: true
-      libvirt-image-backend: rbd
+      libvirt-image-backend: qcow2
       migration-auth-type: ssh
       multi-host: "no"
-      openstack-origin: $SOURCE
-      rbd-client-cache: enabled
-      rbd-pool: nova
       resume-guests-state-on-host-boot: true
       use-internal-endpoints: true
       virt-type: kvm
+      config-flags: block_device_allocate_retries=300,block_device_allocate_retries_interval=10
     bindings:
       "": internal
       amqp: internal
-      ceph: storage
-      ceph-access: storage
       cloud-compute: internal
       cloud-credentials: internal
       compute-peer: data
@@ -635,7 +536,6 @@ applications:
   ntp:
     charm: ntp
     channel: stable
-    revision: 50
     options:
       source: pool.ntp.org
     bindings:
@@ -647,8 +547,7 @@ applications:
       ntpmaster: internal
   openstack-dashboard:
     charm: openstack-dashboard
-    channel: stable
-    revision: 514
+    channel: 2023.1/stable
     num_units: 3
     to:
     - lxd:0
@@ -666,7 +565,6 @@ applications:
       neutron-network-lb: true
       neutron-network-vpn: true
       offline-compression: "Yes"
-      openstack-origin: $SOURCE
       secret: $DASHSEC
       ubuntu-theme: "no"
       vip: $DASPUB
@@ -687,15 +585,14 @@ applications:
       websso-trusted-dashboard: internal
   ovn-central:
     charm: ovn-central
-    channel: stable
-    revision: 16
+    channel: 23.03/stable
     num_units: 3
     to:
     - lxd:0
     - lxd:1
     - lxd:2
     options:
-      source: $SOURCE
+      ovsdb-server-election-timer: 30
     bindings:
       "": internal
       certificates: admin
@@ -706,12 +603,11 @@ applications:
       ovsdb-server: internal
   ovn-chassis:
     charm: ovn-chassis
-    channel: stable
-    revision: 21
+    channel: 23.03/stable
     options:
       bridge-interface-mappings: br-provider:bond0 br-int:bond0.$OVERLAY
       ovn-bridge-mappings: physnet1:br-provider physnet2:br-int
-      prefer-chassis-as-gw: true
+      prefer-chassis-as-gw: false
     bindings:
       "": internal
       amqp: internal
@@ -724,15 +620,13 @@ applications:
       ovsdb-subordinate: internal
   placement:
     charm: placement
-    channel: stable
-    revision: 32
+    channel: 2023.1/stable
     num_units: 3
     to:
     - lxd:0
     - lxd:1
     - lxd:2
     options:
-      openstack-origin: $SOURCE
       use-internal-endpoints: true
       vip: $PLAADM $PLAINT $PLAPUB
       vip_cidr: 24
@@ -751,7 +645,6 @@ applications:
   placement-hacluster:
     charm: hacluster
     channel: stable
-    revision: 83
     bindings:
       "": internal
       ha: internal
@@ -762,8 +655,7 @@ applications:
       peer-availability: internal
   rabbitmq-server:
     charm: rabbitmq-server
-    channel: stable
-    revision: 123
+    channel: 3.9/stable
     num_units: 3
     to:
     - lxd:0
@@ -774,7 +666,6 @@ applications:
       enable-auto-restarts: true
       min-cluster-size: 3
       mirroring-queues: true
-      source: $SOURCE
       stats_cron_schedule: '*/5 * * * *'
     bindings:
       "": internal
@@ -783,22 +674,9 @@ applications:
       cluster: internal
       ha: internal
       nrpe-external-master: internal
-  radosgw-hacluster-spin:
-    charm: hacluster
-    channel: stable
-    revision: 83
-    bindings:
-      "": internal
-      ha: internal
-      hanode: internal
-      juju-info: internal
-      nrpe-external-master: internal
-      pacemaker-remote: internal
-      peer-availability: internal
   vault:
     charm: vault
-    channel: stable
-    revision: 54
+    channel: 1.8/stable
     num_units: 3
     to:
     - lxd:0
@@ -823,7 +701,6 @@ applications:
   vault-hacluster:
     charm: hacluster
     channel: stable
-    revision: 83
     bindings:
       "": internal
       ha: internal
@@ -839,9 +716,6 @@ machines:
   "3": {}
   "4": {}
   "5": {}
-  "6": {}
-  "7": {}
-  "8": {}
 relations:
 - - keystone:ha
   - keystone-hacluster:ha
@@ -861,10 +735,6 @@ relations:
   - etcd:certificates
 - - vault:certificates
   - keystone:certificates
-- - cephmon-spin:osd
-  - ceph-osd-spin:mon
-- - vault:secrets
-  - ceph-osd-spin:secrets-storage
 - - nova-cloud-controller:ha
   - ncc-hacluster:ha
 - - mysql-router-ncc:db-router
@@ -903,50 +773,30 @@ relations:
   - keystone:identity-service
 - - glance:amqp
   - rabbitmq-server:amqp
-- - glance:ceph
-  - cephmon-spin:client
 - - vault:certificates
   - glance:certificates
-- - cinder-spin:ha
-  - cinder-spin-hacluster:ha
-- - cinder-spin:storage-backend
-  - cinder-ceph-spin:storage-backend
-- - cinder-spin:identity-service
+- - cinder:ha
+  - cinder-hacluster:ha
+- - vault:certificates
+  - cinder-lvm:certificates
+- - cinder:identity-service
   - keystone:identity-service
-- - cinder-spin:cinder-volume-service
+- - cinder:cinder-volume-service
   - nova-cloud-controller:cinder-volume-service
-- - cinder-spin:amqp
+- - cinder:amqp
   - rabbitmq-server:amqp
-- - cinder-spin:image-service
-  - glance:image-service
-- - cinder-spin:cinder-volume-service
-  - glance:cinder-volume-service
 - - mysql-router-cinder:db-router
   - mysql-innodb-cluster:db-router
 - - mysql-router-cinder:shared-db
-  - cinder-spin:shared-db
-- - cinder-ceph-spin:ceph
-  - cephmon-spin:client
+  - cinder:shared-db
 - - vault:certificates
-  - cinder-spin:certificates
-- - ceph-radosgw-spin:ha
-  - radosgw-hacluster-spin:ha
-- - ceph-radosgw-spin:mon
-  - cephmon-spin:radosgw
-- - keystone:identity-service
-  - ceph-radosgw-spin:identity-service
-- - vault:certificates
-  - ceph-radosgw-spin:certificates
+  - cinder:certificates
 - - nova-compute:cloud-compute
   - nova-cloud-controller:cloud-compute
 - - nova-compute:amqp
   - rabbitmq-server:amqp
 - - nova-compute:image-service
   - glance:image-service
-- - nova-compute:ceph
-  - cephmon-spin:client
-- - nova-compute:ceph-access
-  - cinder-ceph-spin:ceph-access
 - - vault:secrets
   - nova-compute:secrets-storage
 - - mysql-router-neutronapi:db-router
@@ -1001,3 +851,17 @@ relations:
   - keystone:identity-service
 - - vault:certificates
   - heat:certificates
+- - keystone:identity-credentials
+  - cinder-volume:identity-credentials
+- - mysql-innodb-cluster:db-router
+  - mysql-router-cinder-volume:db-router
+- - mysql-router-cinder-volume:shared-db
+  - cinder-volume:shared-db
+- - rabbitmq-server:amqp
+  - cinder-volume:amqp
+- - vault:certificates
+  - cinder-volume:certificates
+- - cinder-lvm:storage-backend
+  - cinder-volume:storage-backend
+- - cinder-volume:cinder-volume-service
+  - nova-cloud-controller:cinder-volume-service

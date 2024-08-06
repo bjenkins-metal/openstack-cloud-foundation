@@ -1,20 +1,20 @@
-auth_token      = "metal-api-token"
-project_id      = "metal-project-id"
-safe_ip         = "your.public.ip.address" #Typically you can google "what is my IP".  You need your public source IP to manage the Edge instance
+auth_token      = "YOUR AUTH TOKEN"
+project_id      = "YOUR PROJECT ID"
+safe_ip         = "your.ip.add.ress" #Typically you can google "what is my IP".  You need your public source IP to manage the Edge instance
 
 # Metro for this stack
-metro         = "da"
+metro         = "METRO" // example metros "da" "se" "sg"
 
 # use mkpasswd from the whois package to create the password for the ubuntu user. (mkpasswd --method=SHA-512 --rounds=4096)
 # make sure to leave both types of quotes and place your password in the center.  ie. "'your-encrypted-password'"
 # Sample password (don't use this) "'$6$rounds=4096$gO/W73Ig$SHNVljzgegbTs.rt.Jj0lEsPZehb7.9QYnqprIV7tRgURSsaOwJfSrKph9h760yvFvD7L2.kFVucKF8mR9SJq.'"
 
-ubuntu_user_pw  = "'your-encrypted-password'"
+ubuntu_user_pw  = "'your password here.  Look at the instructions above.  The tick and quotes are important'"
 
 # Openstack deployment type  
-# Compact = "true" will deploy a full stack containing 3 controller hosts, 3 database hosts, 3 OVN-Dedicated-Chassis, 3 Storage hosts, 5 compute nodes, the edge and juju controller.
-# Compact = "false" will shrink the deployment to 3 controller hosts, 3 storage hosts, 3 compute nodes, the edge and juju controller.
-compact = "false"
+# Compact = "false" will deploy a full private cloud containing 3 controller hosts, 3 database hosts, 3 OVN-Dedicated-Chassis, 3 Storage hosts, 5 compute nodes, the edge and juju controller.
+# Compact = "true" will shrink the deployment to 3 controller hosts, 3 compute nodes, the edge and juju controller.
+compact = "true"
 
 # VLAN provisioning
 admin_vlan = {
@@ -56,8 +56,8 @@ controller_size = "m3.large.x86"
 db_size         = "m3.large.x86"
 storage_size    = "s3.xlarge.x86"
 ovnc_size       = "m3.small.x86"
-compute_size    = "m3.large.x86"
-ubuntu_version  = "ubuntu_20_04"
+compute_size    = "n3.xlarge.x86"
+ubuntu_version  = "ubuntu_22_04"
 billing_cycle   = "hourly"
 
 ## EDGE PROVISIONING VARS ##
@@ -66,7 +66,7 @@ billing_cycle   = "hourly"
 router_public_ips_net = "8" # Number of IPs needed, for instance a /29=8 /28=16 /27=32
 router_public_ips_tag = ["Router Subnet"]
 edge_hostname    = "edge-gateway"
-edge_os          = "ubuntu_20_04"
+edge_os          = "ubuntu_22_04"
 edge_size        = "m3.small.x86"
 pub_ip           = "" # leave blank
 # DHCP ranges for each network
@@ -85,8 +85,8 @@ ntp_upstream     = "pool.ntp.org"
 dns_upstream     = "1.1.1.1"
 # CHR Version to deploy.  
 # Make sure you have a Mikrotik account so you can get a 60 day trial of unlimited port speed
-mikrotik_link    = "https://download.mikrotik.com/routeros/7.5/chr-7.5.img.zip"
-mikrotik_version = "chr-7.5.img"
+mikrotik_link    = "https://download.mikrotik.com/routeros/7.14.3/chr-7.14.3.img.zip"
+mikrotik_version = "chr-7.14.3.img"
 
 ## Openstack external provider network
 # External IP block size /29=8 /28=16 /27=32
@@ -260,7 +260,8 @@ data_cidr          = "172.22.5.0/24"
 data_gateway       = "172.22.5.1/24"
 
 ## Openstack source
-ossource = "cloud:focal-xena"
+ossource = "cloud:jammy-antelope"
+#ossource = "cloud:focal-xena"
 
 ## Openstack service Virtual IP Settings ##
 # Subnet mask for vitual IPs assigned to the various services. For this project stick to a single subnet size for all networks i.e. /24 or /16
