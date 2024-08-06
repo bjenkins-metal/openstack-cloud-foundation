@@ -2,7 +2,7 @@
 
 
 resource "equinix_metal_device" "storage" {
-  count             = length(var.storage_names)
+  count             = var.compact == "false" ? length(var.storage_names) : 0
   hostname          = var.storage_names[count.index].servername
   project_id        = var.project_id
   metro             = var.metro
@@ -48,14 +48,14 @@ resource "time_sleep" "storage_allow_update" {
 }
 
 resource "equinix_metal_device_network_type" "storage" {
-  count     = length(var.storage_names)
+  count     = var.compact == "false" ? length(var.storage_names) : 0
   device_id = equinix_metal_device.storage[count.index].id
   type      = "layer2-bonded"
   depends_on = [time_sleep.storage_allow_update]
 }
 
 resource "equinix_metal_port_vlan_attachment" "storage_admin" {
-  count     = length(var.storage_names)
+  count     = var.compact == "false" ? length(var.storage_names) : 0
   device_id = equinix_metal_device.storage[count.index].id
   vlan_vnid = equinix_metal_vlan.admin_vlan.vxlan
   port_name = "bond0"
@@ -63,7 +63,7 @@ resource "equinix_metal_port_vlan_attachment" "storage_admin" {
 }
 
 resource "equinix_metal_port_vlan_attachment" "storage_internal" {
-  count     = length(var.storage_names)
+  count     = var.compact == "false" ? length(var.storage_names) : 0
   device_id = equinix_metal_device.storage[count.index].id
   vlan_vnid = equinix_metal_vlan.internal_vlan.vxlan
   port_name = "bond0"
@@ -71,7 +71,7 @@ resource "equinix_metal_port_vlan_attachment" "storage_internal" {
 }
 
 resource "equinix_metal_port_vlan_attachment" "storage_storage" {
-  count     = length(var.storage_names)
+  count     = var.compact == "false" ? length(var.storage_names) : 0
   device_id = equinix_metal_device.storage[count.index].id
   vlan_vnid = equinix_metal_vlan.storage_vlan.vxlan
   port_name = "bond0"
@@ -79,7 +79,7 @@ resource "equinix_metal_port_vlan_attachment" "storage_storage" {
 }
 
 resource "equinix_metal_port_vlan_attachment" "storage_storagerep" {
-  count     = length(var.storage_names)
+  count     = var.compact == "false" ? length(var.storage_names) : 0
   device_id = equinix_metal_device.storage[count.index].id
   vlan_vnid = equinix_metal_vlan.storagerep_vlan.vxlan
   port_name = "bond0"

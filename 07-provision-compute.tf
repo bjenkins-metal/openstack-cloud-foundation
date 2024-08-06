@@ -74,7 +74,15 @@ resource "equinix_metal_port_vlan_attachment" "compute_storage" {
   count     = var.compact == "false" ? length(var.compute_names) : 3
   device_id = equinix_metal_device.compute[count.index].id
   vlan_vnid = equinix_metal_vlan.storage_vlan.vxlan
-  port_name = "bond0"
+  port_name = var.compute_size == "n3.xlarge.x86" ? "bond1" : "bond0"
+  depends_on = [equinix_metal_device_network_type.compute]
+}
+
+resource "equinix_metal_port_vlan_attachment" "compute_storagerep" {
+  count     = var.compact == "false" ? length(var.compute_names) : 3
+  device_id = equinix_metal_device.compute[count.index].id
+  vlan_vnid = equinix_metal_vlan.storagerep_vlan.vxlan
+  port_name = var.compute_size == "n3.xlarge.x86" ? "bond1" : null
   depends_on = [equinix_metal_device_network_type.compute]
 }
 
@@ -95,7 +103,7 @@ resource "equinix_metal_port_vlan_attachment" "compute_overlay" {
 }
 
 resource "equinix_metal_port_vlan_attachment" "compute_external" {
-  count     = var.compact == "false" ? 0 : 3
+  count     = var.compact == "false" ? length(var.compute_names) : 3
   device_id = equinix_metal_device.compute[count.index].id
   vlan_vnid = equinix_metal_vlan.external_vlan.vxlan
   port_name = "bond0"
